@@ -1,0 +1,73 @@
+{
+  "sourceRevision": "828d2bff97a77fbdbd0f06429369f7ff1f4abf42",
+  "modules": {
+    "smart_tools": {
+      "sha256": "f7b5979b1fd12a58197ceafde346512dd21c2ec216ea248a07c1258419c2140e",
+      "source": "amplifier_web/smart_tools.py"
+    },
+    "smart_tool_lifecycle": {
+      "sha256": "defd239040084f35cb98d87ee738da0b405012a08e4c392d4907b528553e06be",
+      "source": "amplifier_web/smart_tool_lifecycle.py"
+    },
+    "smart_tool_updates": {
+      "sha256": "659e2bedc8fffbd89a83564e7de43584c73a6cb4d98d93d9ba2365092207da2c",
+      "source": "amplifier_web/smart_tool_updates.py"
+    },
+    "mcp_connection": {
+      "sha256": "40502bb057ec4a5caf160f4c5f57080246f60129bca2083b1b8c253c320ef2b2",
+      "source": "amplifier_web/mcp_connection.py"
+    },
+    "mcp_account": {
+      "sha256": "303762162f260d6590387a52c8a21323dc0e76c26a3cb6daec69be776ccd589a",
+      "source": "amplifier_web/mcp_account.py"
+    },
+    "mcp_oauth": {
+      "sha256": "87c34df478c6b7f0eeacdd13c3dbe1dd017610b8b803bc8296cce43330a12de7",
+      "source": "amplifier_web/mcp_oauth.py"
+    },
+    "agent_state": {
+      "sha256": "a3fa181423e715964d421faa98a7becd78ee2613732144e5c7e33e947f9b8555",
+      "source": "amplifier_web/agent_state.py",
+      "symbols": [
+        "_pointer",
+        "_size",
+        "_preview",
+        "read_state"
+      ]
+    },
+    "deployment": {
+      "sha256": "53ecf822b24aaab44050325c83f5a051e2f867107d425c05a8b2831a75ea36e1",
+      "source": "amplifier_web/deployment.py",
+      "symbols": [
+        "write_file",
+        "write_private",
+        "canonical_host",
+        "validate_origin"
+      ]
+    },
+    "updates": {
+      "sha256": "33a5a568d1c3e2d1d8f256adf1dcc65f731a0f0d2afec75976da291996016108",
+      "source": "amplifier_web/updates.py",
+      "symbols": [
+        "pinned",
+        "safe_label"
+      ]
+    },
+    "smart_canvas": {
+      "source": "amplifier_web/smart_canvas.py",
+      "sha256": "19610f6d0fdc46b5e71d56d014a5a73ae8335dc1c3c261e3dfe5b2f0007841ad",
+      "policy": "Authority rules adapted into scoped broker; no AppService class or state wrapper copied."
+    },
+    "mcp_view_recovery": {
+      "source": "amplifier_web/mcp_view_recovery.py",
+      "sha256": "bfcede5e6889a2eab09e98abf801d04396e4afe699380b9782f535b0a9ec09b8",
+      "policy": "Authority rules adapted into scoped broker; no AppService class or state wrapper copied."
+    },
+    "canvas_presentation": {
+      "source": "amplifier_web/canvas_presentation.py",
+      "sha256": "39234a6483a7de2a586c6a39b282fa62849b143cd7a9618f05fbfeb21d9304f0",
+      "policy": "Authority rules adapted into scoped broker; no AppService class or state wrapper copied."
+    }
+  },
+  "policy": "Transport/OAuth/account/lifecycle implementations extracted with namespace imports; manager storage replaced by bounded dedicated records; source/result binding logic adapted into session-scoped immutable views. No Core/Foundation/module classes changed."
+}

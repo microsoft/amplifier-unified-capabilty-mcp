@@ -1,0 +1,7 @@
+{
+  "sourceRepository": "microsoft/amplifier-unified",
+  "sourceRevision": "0c878427133d1b38728969452dccff6200670eb5",
+  "sourcePath": "components/mcp-capabilities",
+  "destinationRepository": "microsoft/amplifier-unified-capability-mcp",
+  "boundary": "Independent capability owner; installation and deployment qualification are separate."
+}

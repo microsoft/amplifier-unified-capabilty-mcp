@@ -1,0 +1,60 @@
+# Amplifier Unified MCP capabilities
+
+This owner retains the real MCP SDK transport, OAuth, connector-attested account identity, progressive discovery, resources, isolated Smart Tool installation, and MCP App bindings. It has no private host or whole application imports. It is separate from native Amplifier's `tool-mcp` module. Node package: `@amplifier/unified-mcp-capabilities`; independently installable Python service: `amplifier-unified-mcp`. Node 22.16+/Python 3.13+ required. Lockfiles record exact tested dependencies. Neither package starts a model.
+
+## Run and compose
+
+```sh
+uv sync --directory components/mcp-capabilities/python
+npm ci --prefix components/mcp-capabilities
+npm run build --prefix components/mcp-capabilities
+components/mcp-capabilities/python/.venv/bin/amplifier-unified-mcp --config /absolute/owned/broker.json
+```
+
+Launcher configuration: `{ "dataDir": "/absolute/owned/mcp", "server": { "port": 8941, "public_origins": ["http://127.0.0.1:8941"] } }`. Supply the host's actual configured origins. The broker takes an exclusive process lock and uses a private SQLite WAL database. Do not reuse another owner's data directory.
+
+```ts
+const mcp = createMCPCapabilities({
+  broker: {command: '/absolute/python', args: ['-m', 'amplifier_unified_mcp.server', '--config', '/absolute/broker.json']},
+  inspectSession: (uri, context) => host.inspectSession(uri, context),
+  registerExternal: (context, descriptor) => resources.registerExternal(context, descriptor),
+  onInvalidate: (topic, scope) => invalidate(topic, scope),
+});
+```
+
+`.actionSchemas()` exposes exact action descriptions and validated JSON schemas for agent discovery. `.manifest`, `.read`, `.action` implement the public capability-owner seam. Topic `connectors` returns `data.mcp` with bounded server, operation, catalog, and installation metadata. `.resourceRead` implements AHP resource/read `{channel:'ahp-root://',uri,encoding:'utf-8'}` with authenticated `{clientId}`. Session context accepts a string URI or `{uri,workingDirectory}`, verified by the injected inspector. Only the trusted native bridge supplies `context.origin:'agent'`; ordinary AHP clients use `ui`. Agent calls retain model visibility even through an app binding. Client args cannot change this origin.
+
+The broker starts lazily. Listing metadata never starts MCP servers or OAuth. Thin broker/changed notifications carry only a revision; Node debounces invalidations for up to 64 recently used scopes. No client draft, active iframe, selected tab, or pagination cursor is persisted.
+
+## Actions and resources
+
+Existing `smartTools.*` configure/connect/disconnect/reconnect/remove, catalog/inspect/install/installBatch/uninstall, discover/schemas/call, resources/readResource, result/readResult, OAuth/account, open/viewStatus/reconnectView/appCall/context actions are advertised. Read-only `smartTools.list {collection,offset?,limit?}` pages servers, catalog, installations, or scoped operations and returns `{collection,items,total,nextOffset,revision}` without creating work. Initial records expose `pages[collection]` so clients do not silently mistake a first page for all records. Discovery separately pages 25 tool summaries; schemas load up to five exact tools/64 KB. Clients own pagination state.
+
+URI families:
+
+- `amplifier-mcp://views/<id>/body?session=<encoded-AHP-URI>&revision=<integer>`: selected JSON `{id,kind,revision,mcp,resources}` with full saved binding.
+- Replace body with `document`: original immutable HTML, content type `text/html;profile=mcp-app`.
+- `status`: `{status,source,canReconnect,bindingRevision,message,revision,review?}`.
+- `result`: `{result:<MCP CallToolResult>}`; `tools`: `{tools:[saved-grant schemas]}`.
+- `resources`: exact MCP result; add `kind=read&uri=<encoded-uri>`, `kind=list&cursor=...`, or `kind=templates&cursor=...`.
+- `amplifier-mcp://operations/<id>?session=<encoded-scope>`: selected durable receipt.
+
+All view reads verify session ownership. Immutable old revisions keep source/result access and cannot execute tools. appCall takes `{canvasId,expectedRevision,name,arguments}` with current integer revision. reconnectView takes `{canvasId,expectedBindingRevision,reviewedContract?}` with exact binding hash. Reconnect never invokes the launch tool or replaces saved source. Configuration/account/resource/schema/grant changes fail closed. A compatible presentation identity or launch operation reuses its artifact ID with immutable versions.
+
+Catalog descriptors contain only ID, scope, title, providerRevision, resource URIs, and compact tool/server IDs (<8 KiB). HTML/results/arguments/grants/account bindings stay here. registerExternal records references only. context is bounded untrusted display data intentionally shared with agents, not an instruction or automatic model turn.
+
+The renderer must use an opaque iframe without allow-same-origin, validate source-window/current-view bindings, deny camera/microphone/location/clipboard, and prepend CSP before tool bytes: `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src data: blob:; object-src 'none'; form-action 'none'; base-uri 'none'`. requestedCsp/requestedPermissions are requests, not grants. Original stored source remains unchanged.
+
+## Durability, authorization, and cost
+
+Command scope/fingerprint is durable before execution. Tool dispatch marks and commits unknown immediately before transport invocation. Explicit responses confirm outcome; post-dispatch loss becomes `status:'interrupted',outcome:'unknown'`. Duplicate identical commands return receipts after restart; conflicting reuse rejects. Nothing reconnects/repeats a call automatically. Result blobs stay on disk, hydrate only for selected operations, and are not deleted by UI overview rollover.
+
+Indexed receipt updates do not serialize unrelated catalogs or installations. Initial records are bounded to 768 KB. MCP source/results retain 2 MB bounds. Limits: 64 registrations, eight explicitly active transports. Identity comes only from connector-attested resource over SDK-authenticated transport, never decoded tokens or browser claims. Exact review revision/issuer/subject remain required. Tokens use private files; environment config stores variable names; returned diagnostics are redacted.
+
+Host-only GET `/oauth/mcp/callback` invokes `.oauthCallback(queryPairs, exactOrigin)`. Preserve duplicate query keys for validation and never log callback queries. SDK PKCE/issuer/resource/state/expiry/single-consumption checks remain. No extra HTTP server is started.
+
+## Validation and remaining integration
+
+`npm test` includes real Node → Python stdio → official MCP SDK subprocess calls; the test visibly skips if Python environment is unavailable. `python/.venv/bin/python -m pytest -q python/tests` covers effects/resources, post-effect crashes, binding/review, local synthetic OAuth/PKCE/refresh, secret redaction, catalog changes, install/update rollback, saved-source recovery, scoped receipts, bounded reads, and agent/app visibility. These isolated fixtures do not prove real external accounts, deployed callbacks, or browser rendering.
+
+Compositor registration and opaque-frame rendering require separate integration acceptance. Legacy Unified MCP registrations/artifacts are not automatically imported: an explicit migration owner must import them or retain documents read-only, without replaying launches. Managed-update implementation/tests are retained in Python; generic maintenance UI still needs public inventory/stage/activate binding. This package does not claim those integration checks are complete.

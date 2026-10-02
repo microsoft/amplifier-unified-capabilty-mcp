@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+[project]
+name = "amplifier-unified-mcp"
+version = "0.1.0"
+description = "Scoped MCP connection and application broker for Amplifier Unified"
+requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = ["mcp>=2.2,<3", "httpx>=0.28,<1", "aiohttp>=3.12,<4", "jsonschema>=4.23,<5", "pyyaml>=6,<7", "filelock>=3.20,<4"]
+[project.scripts]
+amplifier-unified-mcp = "amplifier_unified_mcp.server:main"
+[tool.hatch.build.targets.wheel]
+packages = ["amplifier_unified_mcp"]
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.25", "pytest-aiohttp>=1.1"]
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
