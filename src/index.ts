@@ -72,6 +72,11 @@ export class MCPCapabilities {
  };
  /** Only the configured host callback route may call this; it is never a capability action. */
  oauthCallback=async(query:Array<[string,string]>,origin:string)=>this.call('oauth/callback',{query,origin});
+ /** Trusted product owner only. Qualification is not a tool's self-attestation. */
+ qualifiedObservation=async(session:string,operation:'qualify'|'check'|'read',args:Json)=>{
+  await this.authorize(session,{clientId:'',session});
+  return this.call('observation',{scope:session,operation,args});
+ };
  async close(){if(this.notification)clearTimeout(this.notification);await (this.broker as {close:()=>Promise<void>}).close();}
 }
 export function createMCPCapabilities(options:Options){return new MCPCapabilities(options);}

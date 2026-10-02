@@ -28,6 +28,36 @@ class Broker:
  def scope(self,value,*,session=False):
   if not isinstance(value,str) or len(value)>8192 or not (value.startswith('ahp-session:/') or not session and value=='host'):raise ValueError('Trusted session scope is required.')
   return value
+ async def observation(self,scope,operation,args):
+  """Trusted observation owner seam. No reconnect, sampling or publication."""
+  from .observation_contract import qualify,check,validate_schema,validate_result,CONTRACT,bounded
+  self.scope(scope,session=True)
+  if operation=='qualify':return qualify(self.manager,args['descriptor'])
+  descriptor=bounded(args['descriptor']);tool=check(self.manager,descriptor)
+  if operation=='check':
+   if args.get('configuration'):
+    config=bounded(args['configuration']);validate_schema(config['target'],descriptor['targetSchema']);validate_schema(config['scope'],descriptor['scopeSchema'])
+   return {'eligible':True,'id':descriptor['id']}
+  if operation!='read':raise ValueError('Unknown qualified observation operation')
+  watch=bounded(args['watch'],65536);request=watch['args']
+  if descriptor['requestArgument'] in request:raise ValueError('Observation identity is host-owned')
+  if watch['sessionId']!=scope or watch['observerId']!=descriptor['id']:raise ValueError('Observation scope does not match its saved owner')
+  validate_schema(watch['target'],descriptor['targetSchema']);validate_schema(watch['scope'],descriptor['scopeSchema'])
+  timeout=watch['readTimeoutSeconds']
+  if type(timeout) is not int or not 1<=timeout<=30:raise ValueError('Observation read timeout must be bounded')
+  occurrence=args['occurrenceId']
+  if not isinstance(occurrence,str) or not 1<=len(occurrence)<=250:raise ValueError('Bounded occurrence identity required')
+  # A read may have been queued before cancellation. Its product owner checks
+  # authority again before accepting the result or admitting any explanation.
+  deadline=time.monotonic()+timeout
+  def guard():
+   if time.monotonic()>deadline:raise ValueError('Queued observation read expired')
+   check(self.manager,descriptor)
+  envelope={'contract':CONTRACT,'watchId':watch['id'],'watchRevision':watch['revision'],'occurrenceId':occurrence,'target':watch['target'],'scope':watch['scope'],'cursor':watch.get('cursor')}
+  result=await self.manager.call_tool(descriptor['connectionId'],descriptor['toolName'],{**request,descriptor['requestArgument']:envelope},origin='agent',timeout_seconds=timeout,allowed_tools=[descriptor['toolName']],expected_configuration=descriptor['configurationKey'],dispatch_guard=guard)
+  if result.get('isError'):raise ValueError('Qualified observer reported a read failure')
+  outcome=validate_result(result.get('structuredContent'),watch);tool=check(self.manager,descriptor);validate_schema(outcome,tool['outputSchema'])
+  return outcome
  def command_receipt(self,scope,identity):
   row=self.db.execute('SELECT scope,value FROM commands WHERE id=?',(identity,)).fetchone()
   if not row or row[0]!=scope:raise ValueError('Operation is not accessible in this scope.')

@@ -19,6 +19,7 @@ async def run(config,output):
    elif method=='snapshot':result=broker.snapshot(p['scope'],offset=p.get('offset',0),limit=p.get('limit',25))
    elif method=='action':result=await broker.action(p['scope'],p['operation'],p.get('args',{}),p['commandId'],origin=p.get('origin','ui'))
    elif method=='read':result=await broker.read(p['scope'],p['id'],p['part'],revision=p.get('revision'),arguments=p.get('arguments'))
+   elif method=='observation':result=await broker.observation(p['scope'],p['operation'],p['args'])
    elif method=='oauth/callback':
     from multidict import MultiDict
     result=await broker.manager.oauth.callback(MultiDict(p['query']),p['origin'])

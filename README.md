@@ -5,10 +5,10 @@ This owner retains the real MCP SDK transport, OAuth, connector-attested account
 ## Run and compose
 
 ```sh
-uv sync --directory components/mcp-capabilities/python
-npm ci --prefix components/mcp-capabilities
-npm run build --prefix components/mcp-capabilities
-components/mcp-capabilities/python/.venv/bin/amplifier-unified-mcp --config /absolute/owned/broker.json
+uv sync --directory python
+npm ci
+npm run build
+python/.venv/bin/amplifier-unified-mcp --config /absolute/owned/broker.json
 ```
 
 Launcher configuration: `{ "dataDir": "/absolute/owned/mcp", "server": { "port": 8941, "public_origins": ["http://127.0.0.1:8941"] } }`. Supply the host's actual configured origins. The broker takes an exclusive process lock and uses a private SQLite WAL database. Do not reuse another owner's data directory.
@@ -58,3 +58,24 @@ Host-only GET `/oauth/mcp/callback` invokes `.oauthCallback(queryPairs, exactOri
 `npm test` includes real Node → Python stdio → official MCP SDK subprocess calls; the test visibly skips if Python environment is unavailable. `python/.venv/bin/python -m pytest -q python/tests` covers effects/resources, post-effect crashes, binding/review, local synthetic OAuth/PKCE/refresh, secret redaction, catalog changes, install/update rollback, saved-source recovery, scoped receipts, bounded reads, and agent/app visibility. These isolated fixtures do not prove real external accounts, deployed callbacks, or browser rendering.
 
 Compositor registration and opaque-frame rendering require separate integration acceptance. Legacy Unified MCP registrations/artifacts are not automatically imported: an explicit migration owner must import them or retain documents read-only, without replaying launches. Managed-update implementation/tests are retained in Python; generic maintenance UI still needs public inventory/stage/activate binding. This package does not claim those integration checks are complete.
+
+## Qualified observation reads
+
+`qualifiedObservation(session, operation, args)` is a private composition seam for the
+operations owner, with `qualify`, `check`, and `read` operations. It is not an agent or
+client action. Operator qualification binds exact installed source digests, schemas,
+connection configuration, account, and reviewed read-only behavior. An MCP
+`readOnlyHint` by itself is insufficient. Qualification is trust in reviewed code,
+not an OS sandbox or proof of a remote implementation.
+
+Every read rechecks that binding and the exact target/scope. It uses an already
+connected transport, suppresses sampling/root access, has a bounded deadline, and
+validates the structured outcome. It never reconnects a server, invokes a model,
+or presents an artifact automatically. File verification is streaming and bounded;
+an LRU of 256 unchanged file identities avoids repeatedly hashing unchanged code.
+
+The seven observation cases use an actual SDK stdio server and cover pending and
+actionable results, source/schema/account/target changes, unavailable connections,
+and refused remote schema references. The complete suite now has 72 Python cases
+and two Node cases. Real provider accounts and remote source enforcement remain
+separate acceptance work.
