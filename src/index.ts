@@ -2,6 +2,9 @@ import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {createInterface} from 'node:readline';
 export type Json=Record<string,any>;
 export interface Context {clientId:string;origin?:'agent'|'ui';session?:string|{uri:string;workingDirectory?:string};workingDirectory?:string;}
+export interface QuiescenceContext {fenceId:string;commandId:string;purpose:'distribution-update'|'recovery';instanceId:string;dataScope:string;}
+export interface QuiescenceProof {verified:true;fenceId:string;commandId:string;outcome:'ready'|'unchanged';instanceId:string;dataScope:string;receiptId:string;}
+export interface QuiescenceLease {ownerId:string;fenceId:string;release:(outcome:'ready'|'unchanged'|'unknown',proof?:QuiescenceProof|{kind:'admission-refused'})=>Promise<void>;}
 export interface BrokerOptions {command:string;args?:string[];env?:Record<string,string>;cwd?:string;timeoutMs?:number;}
 export interface Options {
  broker:BrokerOptions|{request:(method:string,args:Json)=>Promise<any>;close:()=>Promise<void>};
@@ -28,7 +31,7 @@ export class BrokerConnection {
  private send(method:string,params:Json):Promise<any>{
   if(this.closed||!this.child)throw Error('MCP broker unavailable.');if(this.pending.size>=32)throw Error('MCP broker request capacity reached.');
   const id=++this.id,text=JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n';if(Buffer.byteLength(text)>4_000_000)throw Error('MCP broker request exceeds 4 MB.');
-  return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.fail('MCP broker request timed out; outcome unknown and work was not replayed.');this.child?.kill();},this.options.timeoutMs??360000);this.pending.set(id,{resolve,reject,timer});this.child!.stdin.write(text,error=>{if(error)this.fail('MCP broker transport failed; outcome unknown.');});});
+  return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{reject(Error('MCP broker request timed out; outcome unknown and work was not replayed. The owner remains alive.'));},this.options.timeoutMs??360000);this.pending.set(id,{resolve,reject,timer});this.child!.stdin.write(text,error=>{if(error)this.fail('MCP broker transport failed; outcome unknown.');});});
  }
  request=async(method:string,args:Json):Promise<any>=>{await this.start();return this.send(method,args);};
  async close(){this.fail('MCP broker connection closed.');if(!this.child||this.child.exitCode!==null)return;this.child.stdin.end();await new Promise<void>(resolve=>{const timer=setTimeout(()=>{this.child?.kill();resolve();},3000);this.child!.once('exit',()=>{clearTimeout(timer);resolve();});});}
@@ -39,15 +42,33 @@ function sessionOf(context:Context){return typeof context.session==='string'?con
 /** Presentation records are bounded, while documents/results remain in the scoped owner. */
 export class MCPCapabilities {
  readonly manifest={version:1,topics:{connectors:{uri:'amplifier-capability://mcp/connectors',version:1,watch:true}},actions:Object.fromEntries(NAMES.map(name=>['smartTools.'+name,{topic:'connectors',operation:'smartTools.'+name,method:'x-amplifier/capabilityAction'}]))};
+ readonly quiescenceAccess=Object.fromEntries(['list','readResult','result','viewStatus','authStatus'].map(name=>['smartTools.'+name,'read' as const]));
+ private activeEffects=0;private gate?:{ownerId:string;context:QuiescenceContext};
  private broker:Options['broker']&{request?:(method:string,args:Json)=>Promise<any>};private sequence=0;private scopes=new Map<string,number>();private notification?:ReturnType<typeof setTimeout>;
  constructor(private options:Options){this.broker='request' in options.broker?options.broker:new BrokerConnection(options.broker,()=>this.changed());}
+ private async effect<T>(work:()=>Promise<T>):Promise<T>{if(this.gate)throw Error('MCP owner intake is closed for quiescence; no new effect was admitted.');this.activeEffects++;try{return await work();}finally{this.activeEffects--;}}
+ inspectQuiescence=async()=>({...await this.call('quiescence/inspect',{}),nodeEffects:this.activeEffects});
+ quiescenceParticipant(ownerId='mcp'){
+  if(!ownerId||ownerId.length>200)throw Error('Bounded MCP owner identity required');
+  const release=async(context:QuiescenceContext,outcome:'ready'|'unchanged'|'unknown',proof?:QuiescenceProof|{kind:'admission-refused'})=>{const result=await this.call('quiescence/release',{ownerId,context,outcome,proof});if(result.released)this.gate=undefined;};
+  return {id:ownerId,acquire:async(context:Readonly<QuiescenceContext>):Promise<QuiescenceLease|null>=>{
+   if(this.activeEffects)return null;
+   if(this.gate&&(this.gate.ownerId!==ownerId||this.gate.context.fenceId!==context.fenceId))throw Error('Existing MCP gate requires reconciliation');
+   this.gate={ownerId,context:structuredClone(context)};
+   const result=await this.call('quiescence/acquire',{ownerId,context});
+   if(result.held===false&&result.executed===false){this.gate=undefined;return null;}
+   if(result.held!==true||result.ownerId!==ownerId||result.fenceId!==context.fenceId)throw Error('MCP held lease was not confirmed');
+   return {ownerId,fenceId:context.fenceId,release:(outcome,proof)=>release(context,outcome,proof)};
+  },reconcileRelease:async(context:Readonly<QuiescenceContext>&{outcome:'ready'|'unchanged';proof:QuiescenceProof})=>release(context,context.outcome,context.proof)};
+ }
  private call(method:string,args:Json){return this.broker.request!(method,args);}
  private changed(){if(this.notification)return;this.notification=setTimeout(()=>{this.notification=undefined;for(const [scope,at] of this.scopes)if(Date.now()-at<300000)this.options.onInvalidate?.('connectors',scope);},20);}
  private async authorize(scope:string,context:Context){this.scopes.delete(scope);this.scopes.set(scope,Date.now());while(this.scopes.size>64)this.scopes.delete(this.scopes.keys().next().value!);if(scope==='host')return {};if(!scope.startsWith('ahp-session:/')||scope.length>8192)throw Error('AHP session scope required.');if(context.session&&sessionOf(context)!==scope)throw Error('Session scope does not match authenticated context.');return this.options.inspectSession(scope,{clientId:context.clientId});}
  private record(scope:string,data:Json){return {topic:'connectors',scope,revision:++this.sequence,data:{mcp:data}};}
  actionSchemas=async()=>this.call('actions',{});
  read=async(request:{uri:string;topic:string;scope:string;clientId:string})=>{if(request.topic!=='connectors')throw Error('Unknown MCP topic.');const scope=scopeOf(request.scope);await this.authorize(scope,{clientId:request.clientId});return this.record(scope,await this.call('snapshot',{scope}));};
- action=async(request:Json,context:Context)=>{
+ action=async(request:Json,context:Context)=>this.quiescenceAccess[request.operation]?this.performAction(request,context):this.effect(()=>this.performAction(request,context));
+ private performAction=async(request:Json,context:Context)=>{
   const scope=scopeOf(request.channel);if(request.version!==1||request.topic!=='connectors'||!NAMES.includes(String(request.operation).replace(/^smartTools\./,''))||!String(request.operation).startsWith('smartTools.'))throw Error('MCP action is not advertised.');
   const trusted=await this.authorize(scope,context);const result=await this.call('action',{scope,operation:request.operation,args:request.args??{},commandId:request.commandId,origin:context.origin??'ui'});
   if(result.read)return {accepted:true,updates:request.operation==='smartTools.authStatus'?[this.record(scope,await this.call('snapshot',{scope}))]:[],invalidate:[],result:result.result};
@@ -67,15 +88,16 @@ export class MCPCapabilities {
   if(!/^[a-zA-Z0-9_-]{1,200}$/.test(id!))throw Error('Invalid MCP resource identity.');
   const rev=url.searchParams.get('revision');const revision=rev===null?undefined:Number(rev);if(part!=='operation'&&(!Number.isSafeInteger(revision)||revision!<1))throw Error('Immutable resource revision required.');
   const arguments_=Object.fromEntries(['kind','uri','cursor'].filter(k=>url.searchParams.has(k)).map(k=>[k,url.searchParams.get(k)]));
-  const value=await this.call('read',{scope,id:id!,part:part!,revision,arguments:arguments_});
+  const read=()=>this.call('read',{scope,id:id!,part:part!,revision,arguments:arguments_});
+  const value=part==='resources'?await this.effect(read):await read();
   return {data:part==='document'?value:JSON.stringify(value),encoding:'utf-8',contentType:part==='document'?'text/html;profile=mcp-app':'application/json'};
  };
  /** Only the configured host callback route may call this; it is never a capability action. */
- oauthCallback=async(query:Array<[string,string]>,origin:string)=>this.call('oauth/callback',{query,origin});
+ oauthCallback=async(query:Array<[string,string]>,origin:string)=>this.effect(()=>this.call('oauth/callback',{query,origin}));
  /** Trusted product owner only. Qualification is not a tool's self-attestation. */
  qualifiedObservation=async(session:string,operation:'qualify'|'check'|'read',args:Json)=>{
   await this.authorize(session,{clientId:'',session});
-  return this.call('observation',{scope:session,operation,args});
+  const execute=()=>this.call('observation',{scope:session,operation,args});return operation==='check'?execute():this.effect(execute);
  };
  async close(){if(this.notification)clearTimeout(this.notification);await (this.broker as {close:()=>Promise<void>}).close();}
 }

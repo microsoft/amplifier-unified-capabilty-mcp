@@ -141,6 +141,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         self.connections, self.schemas, self.connection_locks = {}, {}, {}
         self.install_lock, self.batch_lock = asyncio.Lock(), asyncio.Lock()
         self.closed = False
+        self.background_io = set()
         self.revision = 0
         self.on_change = None
         self._state = {name: json.loads(row[0]) if (row := self.db.execute("SELECT value FROM records WHERE id=?", (name,)).fetchone()) else [] for name in ("servers", "catalog", "installations")}
@@ -480,6 +481,15 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         # The host decides which requested permissions it actually grants.
         return {"uri": uri, "html": self._redact(html), "csp": ui.get("csp", {}), "permissions": ui.get("permissions", {}), "meta": _bounded(meta, 32_000), "tools": [tool["name"] for tool in tools if _visible(tool, "app")]}
 
+    async def background_thread(self, callback, *args):
+        task = asyncio.create_task(asyncio.to_thread(callback, *args))
+        self.background_io.add(task)
+        def finished(done):
+            self.background_io.discard(done)
+            if not done.cancelled():done.exception()
+        task.add_done_callback(finished)
+        return await asyncio.shield(task)
+
     async def _run(self, argv, *, cwd=None, timeout=120, env=None):
         process = await asyncio.create_subprocess_exec(*argv, cwd=cwd, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         try:
@@ -605,6 +615,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
                 shutil.rmtree(checkout, ignore_errors=True)
 
     async def close(self):
+        await asyncio.gather(*self.background_io, return_exceptions=True)
         await self.oauth.close()
         self.closed = True
         await asyncio.gather(*(connection.close() for connection in self.connections.values()), return_exceptions=True)

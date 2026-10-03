@@ -14,7 +14,10 @@ async def run(config,output):
   try:
    if row.get('jsonrpc')!='2.0' or not isinstance(row.get('params',{}),dict):raise ValueError('Invalid request.')
    p=row.get('params',{});method=row['method']
-   if method=='initialize':result={'protocolVersion':1,'capabilities':{'actions':list(ACTIONS),'resources':True,'oauthCallback':True}}
+   if method=='initialize':result={'protocolVersion':1,'capabilities':{'actions':list(ACTIONS),'resources':True,'oauthCallback':True,'quiescence':{'version':1,'held':True}}}
+   elif method=='quiescence/acquire':result=broker.quiescence.acquire(p['ownerId'],p['context'])
+   elif method=='quiescence/inspect':result=broker.quiescence.inspect()
+   elif method=='quiescence/release':result=broker.quiescence.release(p['ownerId'],p['context'],p['outcome'],p.get('proof'))
    elif method=='actions':result={name:{'description':value[0],'schema':value[1]} for name,value in ACTIONS.items()}
    elif method=='snapshot':result=broker.snapshot(p['scope'],offset=p.get('offset',0),limit=p.get('limit',25))
    elif method=='action':result=await broker.action(p['scope'],p['operation'],p.get('args',{}),p['commandId'],origin=p.get('origin','ui'))
@@ -22,7 +25,7 @@ async def run(config,output):
    elif method=='observation':result=await broker.observation(p['scope'],p['operation'],p['args'])
    elif method=='oauth/callback':
     from multidict import MultiDict
-    result=await broker.manager.oauth.callback(MultiDict(p['query']),p['origin'])
+    result=await broker.oauth_callback(MultiDict(p['query']),p['origin'])
    else:raise ValueError('Unknown broker method.')
    response={'jsonrpc':'2.0','id':identity,'result':result}
   except Exception as exc:response={'jsonrpc':'2.0','id':identity,'error':{'code':-32000,'message':broker.manager._redact(str(exc))[:2000]}}

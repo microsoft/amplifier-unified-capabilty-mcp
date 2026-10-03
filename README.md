@@ -79,3 +79,49 @@ actionable results, source/schema/account/target changes, unavailable connection
 and refused remote schema references. The complete suite now has 72 Python cases
 and two Node cases. Real provider accounts and remote source enforcement remain
 separate acceptance work.
+
+## Held restart/recovery participation
+
+`owner.quiescenceParticipant('mcp')` returns the public host participant shape:
+`acquire({fenceId,commandId,purpose,instanceId,dataScope})` returns a held
+`{ownerId,fenceId,release(outcome,proof)}` lease or `null` for a known busy/coverage
+refusal. `reconcileRelease({...context,outcome,proof})` releases an exact saved
+fence after process replacement. `inspectQuiescence()` returns aggregate request,
+OAuth, background-I/O and transport coverage plus the compact gate receipt. These
+are trusted composition APIs, never browser actions. The broker's private stdio
+methods are `quiescence/acquire`, `quiescence/inspect`, `quiescence/release`.
+
+The broker stores its gate in SQLite before returning a held lease. After restart,
+that gate is unknown and all effects remain blocked until the host supplies its
+verified exact release proof. A repeated old fence never reacquires or repeats
+work. Only the current process can unwind a confirmed held lease using the host's
+`{kind:'admission-refused'}` proof; unknown/restarted gates require verified
+fence/command/data-scope/running-instance/receipt identity. Callback or transport
+uncertainty does not clear the gate. A private RPC timeout leaves the owner alive
+and keeps the bounded outstanding request slot until its late result or process
+exit; it never kills uncertain work to manufacture idleness.
+
+Effects include all mutating broker actions, OAuth HTTP callbacks, qualified
+observation reads, remote resource reads, Node artifact registration, and install
+I/O. Cancelled callers do not hide a filesystem thread that is still running.
+Detached OAuth tasks are counted until they settle. Selected saved documents,
+results, metadata and receipts remain readable. The exact safe capability action
+map is `owner.quiescenceAccess`; composition may forward it to the host. Remote
+resource reads are execution requests and are not in that map.
+
+An idle connected MCP transport is reported separately as
+`connected-peer-retirement-unverified`, **not** as active work. This generic owner
+has no atomic remote retirement guarantee and does not kill an idle stdio server
+that might own background jobs. Explicitly disconnect the peer to qualify; the
+owner does not automatically reconnect after release. Historical unknown receipts
+alone do not block admission when no execution or transport lifetime remains.
+The receipts and all source/result blobs are preserved.
+
+The installed MCP 2.2.0 client negotiates UI and account-identity extensions only.
+It does not negotiate asynchronous Tasks. The current official
+[Tasks extension](https://modelcontextprotocol.github.io/ext-tasks/specification/2026-07-28/tasks.html)
+requires explicit per-request support and durable task IDs; it supplies task
+status/control, not an atomic generic peer-retirement guarantee. Task-aware or
+reviewed peer retirement is a future explicit capability. Connected generic peers
+therefore remain a documented limitation of automatic update/recovery admission,
+not evidence of complete automatic-updater compatibility.

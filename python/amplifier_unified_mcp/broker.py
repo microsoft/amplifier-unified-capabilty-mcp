@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 import jsonschema
 from .smart_tools import SmartToolsManager, configuration_key, _visible, _bounded
 from .definitions import definitions
+from .quiescence import Quiescence, READ_ACTIONS
 
 def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 def account(server):return {k:server['accountBinding'].get(k) for k in ('issuer','subject')} if server.get('accountBinding') else None
@@ -25,10 +26,20 @@ class Broker:
   self.db.execute("UPDATE commands SET value=json_set(value,'$.status','interrupted','$.outcome','unknown','$.error','Broker restarted; work was not replayed.') WHERE json_extract(value,'$.status')='running'")
   self.db.execute("CREATE INDEX IF NOT EXISTS presentations ON views(scope,json_extract(value,'$.presentationKey'),revision)")
   self.db.commit();self.locks={};self.active=0
+  self.quiescence=Quiescence(self.db,self.quiescence_work)
  def scope(self,value,*,session=False):
   if not isinstance(value,str) or len(value)>8192 or not (value.startswith('ahp-session:/') or not session and value=='host'):raise ValueError('Trusted session scope is required.')
   return value
+ def quiescence_work(self):
+  live=[connection for connection in self.manager.connections.values() if not connection.task.done()]
+  oauth=sum(1 for session in self.manager.oauth.sessions.values() if session.get('task') and not session['task'].done())
+  return {'counts':{'commands':self.active,'oauthTasks':oauth,'backgroundIO':len(self.manager.background_io),'queuedSDKRequests':sum(connection.queue.qsize() for connection in live)},'gaps':['connected-peer-retirement-unverified'] if live else [],'idleTransports':len(live)}
+ async def oauth_callback(self,query,origin):
+  async with self.quiescence.effect():return await self.manager.oauth.callback(query,origin)
  async def observation(self,scope,operation,args):
+  if operation=='check':return await self._observation(scope,operation,args)
+  async with self.quiescence.effect():return await self._observation(scope,operation,args)
+ async def _observation(self,scope,operation,args):
   """Trusted observation owner seam. No reconnect, sampling or publication."""
   from .observation_contract import qualify,check,validate_schema,validate_result,CONTRACT,bounded
   self.scope(scope,session=True)
@@ -186,6 +197,9 @@ class Broker:
   view['revision']+=1;descriptor=self.save_view(view)
   return {**self.status(view),'descriptor':descriptor}
  async def read(self,scope,identity,part,*,revision=None,arguments=None):
+  if part!='resources':return await self._read(scope,identity,part,revision=revision,arguments=arguments)
+  async with self.quiescence.effect():return await self._read(scope,identity,part,revision=revision,arguments=arguments)
+ async def _read(self,scope,identity,part,*,revision=None,arguments=None):
   if part=='operation':return self.command_receipt(scope,identity)
   view=self.view(scope,identity,revision);args=arguments or {}
   if part=='status':return self.status(view)
@@ -202,6 +216,9 @@ class Broker:
    return result
   raise ValueError('Unknown MCP resource surface.')
  async def action(self,scope,operation,args,command_id,*,origin='ui'):
+  if operation in READ_ACTIONS:return await self._action(scope,operation,args,command_id,origin=origin)
+  async with self.quiescence.effect():return await self._action(scope,operation,args,command_id,origin=origin)
+ async def _action(self,scope,operation,args,command_id,*,origin='ui'):
   self.scope(scope)
   if operation not in ACTIONS:raise ValueError('MCP action is not advertised.')
   if not isinstance(command_id,str) or not 1<=len(command_id)<=200:raise ValueError('Durable command identity is required.')
