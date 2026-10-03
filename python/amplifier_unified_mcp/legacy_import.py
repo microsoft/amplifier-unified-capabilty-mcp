@@ -101,7 +101,9 @@ class LegacyImport:
                 raise ValueError('Original registration identity required')
             if normalized['installationId']:
                 raise ValueError('Legacy package ownership cannot be transferred; retain original installation and review separately')
-            target = {'kind': kind, 'id': identity, 'scope': scope, 'configuration': config}
+            # Bind the reviewed effective cwd/defaults, not an unresolved symlink.
+            effective = {key:copy.deepcopy(normalized[key]) for key in ACTIONS['smartTools.configure'][1]['properties'] if key in normalized and normalized[key] is not None}
+            target = {'kind': kind, 'id': identity, 'scope': scope, 'configuration': effective}
         elif kind == 'artifact':
             if set(value) != {'format', 'kind', 'artifact', 'body', 'binding', 'result'}:
                 raise ValueError('Select artifact, hydrated body, binding and result explicitly')

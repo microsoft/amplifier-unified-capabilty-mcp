@@ -76,7 +76,7 @@ an LRU of 256 unchanged file identities avoids repeatedly hashing unchanged code
 
 The seven observation cases use an actual SDK stdio server and cover pending and
 actionable results, source/schema/account/target changes, unavailable connections,
-and refused remote schema references. The qualified suite has 109 Python cases
+and refused remote schema references. The qualified suite has 110 Python cases
 and nine Node cases. Real provider accounts and remote source enforcement remain
 separate acceptance work.
 

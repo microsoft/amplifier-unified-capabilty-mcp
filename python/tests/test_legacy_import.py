@@ -165,3 +165,15 @@ async def test_broker_import_intake_holds_write_but_keeps_exact_receipt_and_orig
     assert broker.legacy.receipt(args['commandId'],'host') == receipt
     first=broker.legacy.source(args['commandId'],'host',limit=10)
     assert first['source'] == args['source'][:10] and first['nextOffset'] == 10
+
+
+async def test_changed_working_directory_resolution_invalidates_review(broker,tmp_path):
+    first=tmp_path/'first';second=tmp_path/'second';first.mkdir();second.mkdir()
+    chosen=tmp_path/'chosen';chosen.symlink_to(first,target_is_directory=True)
+    args=request(registration(cwd=str(chosen)))
+    review=broker.legacy.review(args)
+    assert review['target']['configuration']['cwd'] == str(first)
+    chosen.unlink();chosen.symlink_to(second,target_is_directory=True)
+    with pytest.raises(ValueError,match='Review the exact'):
+        await broker.legacy.apply({**args,'reviewDigest':review['reviewDigest']})
+    assert not broker.manager.state['servers']
