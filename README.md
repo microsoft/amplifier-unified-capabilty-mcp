@@ -57,7 +57,7 @@ Host-only GET `/oauth/mcp/callback` invokes `.oauthCallback(queryPairs, exactOri
 
 `npm test` includes real Node → Python stdio → official MCP SDK subprocess calls; the test visibly skips if Python environment is unavailable. `python/.venv/bin/python -m pytest -q python/tests` covers effects/resources, post-effect crashes, binding/review, local synthetic OAuth/PKCE/refresh, secret redaction, catalog changes, install/update rollback, saved-source recovery, scoped receipts, bounded reads, and agent/app visibility. These isolated fixtures do not prove real external accounts, deployed callbacks, or browser rendering.
 
-Compositor registration and opaque-frame rendering require separate integration acceptance. Legacy Unified MCP registrations/artifacts are not automatically imported: an explicit migration owner must import them or retain documents read-only, without replaying launches. Managed-update implementation/tests are retained in Python; generic maintenance UI still needs public inventory/stage/activate binding. This package does not claim those integration checks are complete.
+Compositor registration and opaque-frame rendering require separate integration acceptance. Legacy Unified MCP registrations/artifacts have an explicit selected offline import seam described below. Import is never automatic; live user-data migration and the host-owned administrative flow remain separate acceptance. Managed-update implementation/tests are retained in Python; generic maintenance UI still needs public inventory/stage/activate binding. This package does not claim those integration checks are complete.
 
 ## Qualified observation reads
 
@@ -76,8 +76,8 @@ an LRU of 256 unchanged file identities avoids repeatedly hashing unchanged code
 
 The seven observation cases use an actual SDK stdio server and cover pending and
 actionable results, source/schema/account/target changes, unavailable connections,
-and refused remote schema references. The complete suite now has 72 Python cases
-and two Node cases. Real provider accounts and remote source enforcement remain
+and refused remote schema references. The qualified suite has 109 Python cases
+and nine Node cases. Real provider accounts and remote source enforcement remain
 separate acceptance work.
 
 ## Held restart/recovery participation
@@ -202,3 +202,66 @@ The allocation comes from the trusted host's native-reviewed managed allocation,
 Unsettled MCP effects and selected retained MCP views protect files. Configured server dependencies lack a complete file-reference declaration; any configured server therefore returns explicit partial coverage (mcp-server-file-dependencies-unclassified). No peer is connected, no tool is called, and remote or local dependencies are not guessed safe.
 
 Inspection uses bounded selected metadata or indexed overlap probes, not native transcripts, a global history projection, or worker/model startup. Existing retention-hide and service-stop lifecycles are unchanged. The package tests cover the independently installed owner transport and held/unknown/exact-release behavior; full host/native/browser disposal acceptance remains a composition responsibility.
+
+## Selected offline legacy import
+
+Trusted composition methods `legacyReview(args, {clientId})`,
+`legacyImport(args, {clientId})`, `legacyReceipt(commandId, scope, {clientId})`
+and `legacySource({commandId, scope, offset?, limit?}, {clientId})` are not
+advertised client/agent actions. The embedding migration administrator must
+supply authenticated operator authority, source-store exclusion and authorized
+native-to-AHP session mapping; a client ID alone is not administrative approval.
+The importer never reads source paths or changes source stores. The host owns
+administrative composition and resource-index registration, including idempotent
+re-registration after a lost acknowledgement.
+
+Supply one selected JSON string as `source`, its exact UTF-8 `sourceSha256`,
+`sourceId`, `scope`, and durable `commandId`. Review returns `reviewDigest`;
+import requires that same digest against the same source and destination mapping.
+The selected envelope has format `amplifier-unified-mcp-legacy-selection/v1`:
+
+- Registration: `{format, kind:'registration', registration:<original row>}`.
+  Scope must be `host`. Original ID/configuration survive. Environment/header
+  values must remain variable references. Original credential records and
+  installation ownership are refused. The imported registration is disconnected;
+  old account bindings, grants, catalog readiness and OAuth tokens confer no
+  authority. Packages and external files remain in the original owner's store.
+- Artifact: `{format, kind:'artifact', artifact:<original saved row>,
+  body:<hydrated body>, binding:<hydrated mcpState>, result:<hydrated savedResult>}`.
+  Supply the exact original `legacySessionId` and authorized destination AHP URI
+  as `scope`. The original MCP App ID and integer revision survive. Hydrated
+  body/binding/result must match their original canonical content-addressed
+  `$resource` references. No savedResult reference means result must be null;
+  no mcpState reference means binding must be empty. Missing original bytes are
+  refused, preserving the source reference for recovery rather than fabricating
+  an empty document.
+
+Review is passive. Source strings are capped at 2.5 MB, documents/results at
+2 MB, bindings at 128 KB, and source pages at 16,000 characters; the private RPC
+frame retains its 4 MB ceiling. Duplicate JSON keys/nonfinite numbers refuse.
+Registration limits remain 64. Destination identity collisions refuse globally;
+imports never overwrite or silently rename. Source bytes, destination bytes and
+receipt commit atomically in the existing owner database. A changed command
+binding refuses. Exact retries return the retained receipt; the same source under
+another command returns the original import command's receipt.
+
+Imported documents/results retain the existing immutable resource descriptors.
+`status:'imported_read_only'` denies reconnect, app calls, remote resource reads
+and mutable context even if an identically named server is later connected.
+Original source and historical bindings remain retained in private owner blobs;
+`legacySource` pages the exact selected source for administrative recovery.
+Import transfers no grant and launches no work. Open a separately reviewed new
+view to acquire current runtime authority.
+
+Held/unknown owner gates block import effects in both Node and Python. Passive
+review, receipt and selected source reads remain available. After compositor
+failure, recover the already committed receipt and retry the exact reviewed
+import to re-register its descriptor; never replay its legacy launch operation.
+
+The selected format is based on retained Unified `resource_files`,
+`canvas_library`, `smart_canvas`, and `mcp_view_recovery` at extraction revision
+`828d2bff97a77fbdbd0f06429369f7ff1f4abf42`. It supports one hydrated immutable
+version per selection, not full-store scanning, credential migration, package
+adoption or mutable legacy UI state. Source selection/export, browser rendering,
+actual legacy user stores and the host administrative migration flow need their
+own qualification.

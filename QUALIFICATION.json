@@ -1,19 +1,52 @@
 {
-  "date": "2026-10-02",
-  "sourceRevision": "see containing commit: qualified observation seam",
-  "relocatedCheckout": true,
-  "environment": {
-    "os": "macOS arm64",
-    "node": "25.2.1",
-    "python": "3.13.11"
-  },
+  "date": "2026-10-03",
+  "baseline": "497ad4978153dc66a3dc2fc7522e955dba72456e",
+  "sourceRevision": "see containing commit: selected reviewed offline import",
   "tests": {
-    "nodePassed": 2,
-    "pythonPassed": 72,
-    "observationSDKCases": 7
+    "nodePassed": 9,
+    "pythonPassed": 109,
+    "pythonSkips": 0,
+    "nodeSkips": 0,
+    "packedNodeImportPassed": 1,
+    "installedWheelPythonPassed": 109
   },
+  "publicHost": {
+    "passed": true,
+    "publicHost": "c4968233 installed @amplifier/unified-host 0.1.0",
+    "owner": "packed @amplifier/unified-mcp-capabilities 0.1.0 + wheel amplifier-unified-mcp 0.1.0",
+    "cases": [
+      "authenticated AHP initialize/session/create",
+      "configure/connect SDK subprocess",
+      "call/open immutable saved App",
+      "resource/read HTML and remote text",
+      "exact call retry executes once",
+      "connected peer retirement refusal",
+      "disconnect/remove preserves document and receipt",
+      "held acquisition after explicit retirement",
+      "public gateway synthetic OAuth consent/PKCE/callback single consumption",
+      "connector-attested account identity",
+      "local authForget explicitly reports no provider revocation"
+    ],
+    "effects": 2,
+    "limits": [
+      "fixture ACP peer",
+      "resource compositor callback references only",
+      "synthetic MCP server",
+      "no real accounts/browser rendering/deployment"
+    ]
+  },
+  "publicContractDelta": [
+    "trusted legacyReview, legacyImport, legacyReceipt, legacySource composition methods",
+    "private broker legacy/review, legacy/import, legacy/receipt, legacy/source",
+    "amplifier-unified-mcp-legacy-selection/v1 selected offline envelope",
+    "no advertised action, upstream AHP/ACP or mutable artifact contract change"
+  ],
   "limits": [
-    "Offline component fixtures and explicitly owned consumers; no production host or real-account adoption.",
-    "Linux Node22/24 CI configured; hosted outcomes are independent."
+    "No real external account or provider-side revocation tested",
+    "Synthetic OAuth browser requests; no actual browser rendering, installed provider callback or device acceptance",
+    "Generic connected peers refuse retirement; disconnect is not proof of remote durable job completion",
+    "Host administrative import flow and actual legacy user-data selection/export remain root integration work",
+    "Imported versions permanently read-only; credentials, installations, missing bytes and mutable UI state not adopted",
+    "No package publication, merge, deployment or Spark writes"
   ]
 }

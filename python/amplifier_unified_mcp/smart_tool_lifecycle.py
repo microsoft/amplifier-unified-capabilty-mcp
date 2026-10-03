@@ -45,7 +45,8 @@ def summary(tool):
 
 
 class Lifecycle:
-    async def configure(self, args):
+    def registration(self, args):
+        """Validate disconnected configuration without changing state or credentials."""
         from .smart_tools import ENV_NAME, configuration_key
         identity = args.get("id") or uuid.uuid4().hex
         transport = args.get("transport", "stdio")
@@ -85,6 +86,12 @@ class Lifecycle:
                "tools": [], "loadedSchemas": {}, "catalogState": "stale", "uiCapable": False,
                "account": {"status": "unknown"}, "authorization": {"consent": "unknown", "requestedScopes": [], "grantedScopes": None},
                "updatedAt": time.time()}
+        return row
+
+    async def configure(self, args):
+        from .smart_tools import configuration_key
+        row = self.registration(args)
+        identity = row["id"]
         def save(state):
             state["servers"] = [item for item in state["servers"] if item["id"] != identity] + [row]
             return row
