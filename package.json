@@ -13,7 +13,11 @@
     "LICENSE",
     "schemas",
     "extraction.json",
-    "runtime-receipt.json"
+    "runtime-receipt.json",
+    "docs/VISION.md",
+    "contracts/mcp-owner.v1.md",
+    "AGENTS.md",
+    "QUALIFICATION.json"
   ],
   "engines": {
     "node": ">=22.16"
