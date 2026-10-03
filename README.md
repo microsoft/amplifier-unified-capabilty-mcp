@@ -127,3 +127,10 @@ therefore remain a documented limitation of automatic update/recovery admission,
 not evidence of complete automatic-updater compatibility.
 
 The optional `onMayBeIdle()` callback coalesces advisory wakeups after complete Node effects and private broker OAuth, SDK connection, and detached filesystem completions. It carries no state or idle proof: the caller must acquire the held participant again. Notification failures cannot change an effect result.
+
+Release retry proof is immutable: the owner atomically retains the canonical
+outcome and entire proof with its released receipt. After acknowledgement loss
+or restart, only the identical context, outcome and proof are accepted; changing
+the receipt identity, authority scope or outcome is rejected. JSON object key
+order is irrelevant. Older released receipts without exact proof evidence are
+not inferred or rewritten into verified release evidence.

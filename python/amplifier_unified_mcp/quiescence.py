@@ -71,11 +71,12 @@ class Quiescence:
 
     def release(self, owner_id, context, outcome, proof):
         fence_id = token(context.get('fenceId'), 'fence identity')
+        signature=json.dumps([outcome,proof],sort_keys=True,separators=(',',':'),allow_nan=False)
         old = self.current()
         if not old:
             row = self.db.execute('SELECT value FROM owner_quiescence_receipts WHERE fence=?', (fence_id,)).fetchone()
             prior = json.loads(row[0]) if row else None
-            if prior and prior.get('state') == 'released' and prior.get('ownerId') == owner_id and prior.get('commandId') == context.get('commandId'):
+            if prior and prior.get('state') == 'released' and prior.get('ownerId') == owner_id and all(prior.get(key)==context.get(key) for key in ('fenceId','commandId','purpose','instanceId','dataScope')) and prior.get('releaseSignature')==signature:
                 return {'released': True, 'duplicate': True}
             raise ValueError('Exact retained MCP fence required.')
         if old['ownerId'] != owner_id or old['fenceId'] != fence_id or any(old.get(key) != context.get(key) for key in ('commandId','purpose','instanceId','dataScope')):
@@ -91,7 +92,7 @@ class Quiescence:
             verified = (proof['instanceId'] == old['instanceId']) == (outcome == 'unchanged')
         if not refused and not verified:
             raise ValueError('Authoritative exact MCP release proof required.')
-        old.update(state='released', outcome=outcome)
+        old.update(state='released', outcome=outcome, releaseSignature=signature)
         self.db.execute('INSERT OR REPLACE INTO owner_quiescence_receipts VALUES(?,?)', (fence_id,json.dumps(old)))
         self.db.execute('DELETE FROM owner_quiescence WHERE id=1');self.db.commit()
         return {'released': True, 'intakeClosed': False}

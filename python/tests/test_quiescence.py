@@ -105,3 +105,13 @@ async def test_cancelled_caller_does_not_hide_thread_io_still_running(tmp_path):
         assert notices==[0]
         assert b.quiescence.acquire('mcp',context('settled'))['held']
     finally:release.set();await b.close()
+
+async def test_release_retry_after_restart_requires_exact_proof_outcome_and_context(tmp_path):
+    c=context();p=proof(c);b=Broker(tmp_path)
+    assert b.quiescence.acquire('mcp',c)['held'];assert b.quiescence.release('mcp',c,'unchanged',p)['released'];await b.close()
+    b=Broker(tmp_path)
+    try:
+        assert b.quiescence.release('mcp',c,'unchanged',dict(reversed(list(p.items()))))['duplicate']
+        for other,outcome,proof_value in [(c,'unchanged',{**p,'receiptId':'different'}),(c,'ready',{**p,'outcome':'ready','instanceId':'replacement'}),({**c,'purpose':'distribution-update'},'unchanged',p),(c,'unknown',p)]:
+            with pytest.raises(ValueError,match='Exact retained'):b.quiescence.release('mcp',other,outcome,proof_value)
+    finally:await b.close()
