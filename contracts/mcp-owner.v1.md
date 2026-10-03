@@ -62,11 +62,17 @@ this owner does not authenticate platform proof or establish remote job completi
 
 ## Evidence and unqualified gaps
 
-[QUALIFICATION.json](../QUALIFICATION.json) identifies the implementation packet
-at `0a17d1206cd6004e57d68dfe802ced69236e6c81`: 110 source and installed-wheel
-Python cases, nine Node cases, a separate packed Node import check, and synthetic
-SDK/OAuth public-host/gateway qualification. This documentation successor retains
-that baseline; it introduces no new execution qualification. Normal checks are
+[QUALIFICATION.json](../QUALIFICATION.json) preserves the sealed implementation
+packet at `0a17d1206cd6004e57d68dfe802ced69236e6c81` and separately records the
+review/apply correction at `c8aadb9ccd3af926808fbb92adc84ef7c004a9a1`.
+The predecessor qualified 110 source/installed-wheel Python cases, nine Node
+cases, a packed Node import check and synthetic public-host/OAuth checks. The
+correction qualified 114 source cases and 22 selected installed import cases;
+the accepted corrective handoff additionally records 114 full installed cases,
+a packed Node/broker smoke check and Node 22/24 CI. Independent corrective review
+was read-only; independent successor execution was unperformed. This documentation
+successor is based on main merge `aacbec7335ee65428858be2e168b8c26984254bc` and
+introduces no new execution qualification. Normal checks are
 `npm run check`, `npm test`, and `python/.venv/bin/python -m pytest -q python/tests`;
 [CI](../.github/workflows/contracts.yml) runs Python 3.13 and Node 22/24.
 
