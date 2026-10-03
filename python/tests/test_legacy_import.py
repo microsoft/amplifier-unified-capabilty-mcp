@@ -177,3 +177,68 @@ async def test_changed_working_directory_resolution_invalidates_review(broker,tm
     with pytest.raises(ValueError,match='Review the exact'):
         await broker.legacy.apply({**args,'reviewDigest':review['reviewDigest']})
     assert not broker.manager.state['servers']
+
+
+@pytest.mark.parametrize("replacement",["symlink","directory"])
+async def test_waiting_import_revalidates_cwd_after_acquiring_manager_lock(broker,tmp_path,replacement):
+    import asyncio
+    first=tmp_path/'first';second=tmp_path/'second';first.mkdir();second.mkdir()
+    chosen=tmp_path/'chosen';chosen.symlink_to(first,target_is_directory=True)
+    args=request(registration(cwd=str(chosen)))
+    review=broker.legacy.review(args)
+    await broker.manager.lock.acquire()
+    pending=asyncio.create_task(broker.legacy.apply({**args,'reviewDigest':review['reviewDigest']}))
+    try:
+        await asyncio.sleep(0)
+        assert not pending.done() and broker.quiescence.active == 1
+        first.rename(tmp_path/'original-first')
+        if replacement == "symlink":
+            first.symlink_to(second,target_is_directory=True)
+        else:
+            first.mkdir()
+    finally:
+        broker.manager.lock.release()
+    with pytest.raises(ValueError,match='Review the exact'):
+        await pending
+    assert not broker.manager.state['servers'] and not broker.manager.connections
+    assert broker.db.execute('SELECT count(*) FROM legacy_imports').fetchone()[0] == 0
+    assert broker.db.execute('SELECT count(*) FROM blobs').fetchone()[0] == 0
+
+
+async def test_import_persists_exact_single_normalization_under_lock(broker,tmp_path,monkeypatch):
+    chosen=tmp_path/'chosen';chosen.mkdir()
+    args=request(registration(cwd=str(chosen)))
+    review=broker.legacy.review(args)
+    original=broker.manager.registration;calls=[]
+    def once(config):
+        assert broker.manager.lock.locked()
+        calls.append(config)
+        assert len(calls) == 1, 'Import must not normalize the validated row a second time'
+        return original(config)
+    monkeypatch.setattr(broker.manager,'registration',once)
+    receipt=await broker.legacy.apply({**args,'reviewDigest':review['reviewDigest']})
+    assert receipt['status'] == 'completed'
+    assert len(calls) == 1
+    saved=broker.manager._server('original-server')
+    for key,value in receipt['target']['configuration'].items():
+        assert saved[key] == value
+
+
+async def test_exact_predecessor_receipt_retry_is_passive_after_directory_changes(broker,tmp_path,monkeypatch):
+    directory=tmp_path/'original';directory.mkdir()
+    args=request(registration(cwd=str(directory)))
+    review=broker.legacy.plan(args)[1]
+    receipt=await reviewed(broker,args)
+    # Reproduce the retained v1 receipt produced by the sealed predecessor,
+    # whose target bound the resolved path but had no filesystem identity.
+    review['target'].pop('cwdIdentity')
+    old_digest=sha(canonical(review))
+    old_receipt={**receipt,**review,'reviewDigest':old_digest}
+    broker.db.execute('UPDATE legacy_imports SET binding=?,value=? WHERE command=?',(old_digest,json.dumps(old_receipt),args['commandId']))
+    broker.db.commit()
+    directory.rename(tmp_path/'retained-original')
+    def forbidden(_):raise AssertionError('Committed retry must not normalize or adopt new authority')
+    monkeypatch.setattr(broker.manager,'registration',forbidden)
+    assert await broker.legacy.apply({**args,'reviewDigest':old_digest}) == {**old_receipt,'duplicate':True}
+    assert broker.legacy.receipt(args['commandId'],'host') == old_receipt
+    assert len(broker.manager.state['servers']) == 1 and not broker.manager.connections
