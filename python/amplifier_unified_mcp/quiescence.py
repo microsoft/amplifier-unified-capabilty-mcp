@@ -52,7 +52,7 @@ class Quiescence:
         if not isinstance(context, dict):
             raise ValueError('Exact host context required.')
         value = {key: token(context.get(key), key) for key in ('fenceId', 'commandId', 'purpose', 'instanceId', 'dataScope')}
-        if value['purpose'] not in {'distribution-update', 'recovery', 'service-stop'}:
+        if value['purpose'] not in {'distribution-update', 'recovery', 'service-stop', 'retention-hide'}:
             raise ValueError('Unsupported quiescence purpose.')
         if value['purpose']=='service-stop':
             value['serviceIdentity']=service_identity(context.get('serviceIdentity'))

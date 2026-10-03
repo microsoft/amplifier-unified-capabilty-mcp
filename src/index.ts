@@ -1,10 +1,11 @@
+import {retentionParticipant} from './retention.js';
 import {serviceIdentity,validateServiceRelease,type ServiceIdentity,type ServiceReleaseFields} from './service-lifecycle.js';
 export type {ServiceIdentity,ServiceReleaseFields} from './service-lifecycle.js';
 import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
 import {createInterface} from 'node:readline';
 export type Json=Record<string,any>;
 export interface Context {clientId:string;origin?:'agent'|'ui';session?:string|{uri:string;workingDirectory?:string};workingDirectory?:string;}
-export interface QuiescenceContext {fenceId:string;commandId:string;purpose:'distribution-update'|'recovery'|'service-stop';instanceId:string;dataScope:string;serviceIdentity?:ServiceIdentity;}
+export interface QuiescenceContext {fenceId:string;commandId:string;purpose:'distribution-update'|'recovery'|'service-stop'|'retention-hide';instanceId:string;dataScope:string;serviceIdentity?:ServiceIdentity;}
 export interface QuiescenceProof extends Partial<ServiceReleaseFields> {verified:true;fenceId:string;commandId:string;outcome:'ready'|'unchanged';instanceId:string;dataScope:string;receiptId:string;}
 export interface QuiescenceLease {ownerId:string;fenceId:string;release:(outcome:'ready'|'unchanged'|'unknown',proof?:QuiescenceProof|{kind:'admission-refused'})=>Promise<void>;}
 export interface BrokerOptions {command:string;args?:string[];env?:Record<string,string>;cwd?:string;timeoutMs?:number;}
@@ -56,7 +57,7 @@ export class MCPCapabilities {
  quiescenceParticipant(ownerId='mcp'){
   if(!ownerId||ownerId.length>200)throw Error('Bounded MCP owner identity required');
   const release=async(context:QuiescenceContext,outcome:'ready'|'unchanged'|'unknown',proof?:QuiescenceProof|{kind:'admission-refused'})=>{if(context.purpose==='service-stop'&&outcome!=='unknown'&&proof?.kind!=='admission-refused')validateServiceRelease(context,outcome,proof);const result=await this.call('quiescence/release',{ownerId,context,outcome,proof});if(result.released)this.gate=undefined;};
-  return {id:ownerId,serviceStop:{version:1 as const},acquire:async(context:Readonly<QuiescenceContext>):Promise<QuiescenceLease|null>=>{
+  return retentionParticipant({id:ownerId,serviceStop:{version:1 as const},acquire:async(context:Readonly<QuiescenceContext>):Promise<QuiescenceLease|null>=>{
    if(this.activeEffects)return null;
    if(this.gate&&(this.gate.ownerId!==ownerId||this.gate.context.fenceId!==context.fenceId))throw Error('Existing MCP gate requires reconciliation');
    const exact:QuiescenceContext=structuredClone(context);if(exact.purpose==='service-stop'){exact.serviceIdentity=serviceIdentity(exact.serviceIdentity);if(exact.serviceIdentity.instanceId!==exact.instanceId||exact.serviceIdentity.dataScope!==exact.dataScope)throw Error('Service identity differs from MCP context');}
@@ -66,7 +67,7 @@ export class MCPCapabilities {
    if(result.held===false&&result.executed===false){this.gate=undefined;return null;}
    if(result.held!==true||result.ownerId!==ownerId||result.fenceId!==context.fenceId)throw Error('MCP held lease was not confirmed');
    return {ownerId,fenceId:context.fenceId,release:(outcome,proof)=>release(exact,outcome,proof)};
-  },reconcileRelease:async(context:Readonly<QuiescenceContext>&{outcome:'ready'|'unchanged';proof:QuiescenceProof})=>{if(context.purpose==='service-stop')validateServiceRelease(context,context.outcome,context.proof);return release(context,context.outcome,context.proof);}};
+  },reconcileRelease:async(context:Readonly<QuiescenceContext>&{outcome:'ready'|'unchanged';proof:QuiescenceProof})=>{if(context.purpose==='service-stop')validateServiceRelease(context,context.outcome,context.proof);return release(context,context.outcome,context.proof);}},args=>this.call('quiescence.retention',args));
  }
  private call(method:string,args:Json){return this.broker.request!(method,args);}
  private mayBeIdle(){if(this.idleNotice)return;this.idleNotice=setTimeout(()=>{this.idleNotice=undefined;try{Promise.resolve(this.options.onMayBeIdle?.()).catch(()=>{})}catch{}},0);this.idleNotice.unref();}

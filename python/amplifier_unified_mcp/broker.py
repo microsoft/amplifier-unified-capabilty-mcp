@@ -1,5 +1,6 @@
 """Session-scoped MCP application owner. No application snapshots or private host objects."""
 from __future__ import annotations
+from .retention import selected, result, exists
 import asyncio, copy, hashlib, json, time, uuid
 from urllib.parse import urlencode
 import jsonschema
@@ -25,8 +26,12 @@ class Broker:
   self.db.executescript("CREATE INDEX IF NOT EXISTS command_scope ON commands(scope); CREATE INDEX IF NOT EXISTS command_status ON commands(json_extract(value,'$.status'));")
   self.db.execute("UPDATE commands SET value=json_set(value,'$.status','interrupted','$.outcome','unknown','$.error','Broker restarted; work was not replayed.') WHERE json_extract(value,'$.status')='running'")
   self.db.execute("CREATE INDEX IF NOT EXISTS presentations ON views(scope,json_extract(value,'$.presentationKey'),revision)")
-  self.db.commit();self.locks={};self.active=0
+  self.db.execute("CREATE INDEX IF NOT EXISTS retention_commands ON commands(scope,json_extract(value,'$.status'),json_extract(value,'$.outcome'))");self.db.commit();self.locks={};self.active=0
   self.quiescence=Quiescence(self.db,self.quiescence_work,self.manager.may_be_idle)
+ def retention_references(self,args):
+  class Held:pass
+  held=Held();held.fence=self.quiescence.current();sessions=selected(held,args)
+  return result(sessions,lambda s:['mcp-unsettled'] if exists(self.db,"SELECT 1 FROM commands WHERE scope IN (?,'host') AND (json_extract(value,'$.status') IN ('pending','running','queued','unknown') OR json_extract(value,'$.outcome')='unknown') LIMIT 1",(s,)) else [])
  def scope(self,value,*,session=False):
   if not isinstance(value,str) or len(value)>8192 or not (value.startswith('ahp-session:/') or not session and value=='host'):raise ValueError('Trusted session scope is required.')
   return value
