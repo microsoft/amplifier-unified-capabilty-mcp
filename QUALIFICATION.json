@@ -1,7 +1,7 @@
 {
   "date": "2026-10-03",
   "baseline": "497ad4978153dc66a3dc2fc7522e955dba72456e",
-  "sourceRevision": "see containing commit: selected reviewed offline import",
+  "sourceRevision": "0a17d1206cd6004e57d68dfe802ced69236e6c81",
   "tests": {
     "nodePassed": 9,
     "pythonPassed": 110,
@@ -48,5 +48,22 @@
     "Host administrative import flow and actual legacy user-data selection/export remain root integration work",
     "Imported versions permanently read-only; credentials, installations, missing bytes and mutable UI state not adopted",
     "No package publication, merge, deployment or Spark writes"
-  ]
+  ],
+  "correctiveQualification": {
+    "sourceRevision": "see containing commit: serialized cwd review correction",
+    "sourcePythonPassed": 114,
+    "installedImportPythonPassed": 22,
+    "skipped": 0,
+    "causalPredecessorFailures": 2,
+    "causalChecks": [
+      "lock-wait symlink switch refuses without writes",
+      "same-path directory replacement refuses without writes",
+      "exactly one normalization under held lock",
+      "committed predecessor receipt retry remains passive"
+    ],
+    "limits": [
+      "Admission-time filesystem identity is not a lease or future execution authorization",
+      "Full installed/public-host/Node evidence above remains the sealed predecessor; no new real-account/browser/deployment acceptance claimed"
+    ]
+  }
 }

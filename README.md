@@ -84,7 +84,7 @@ an LRU of 256 unchanged file identities avoids repeatedly hashing unchanged code
 
 The seven observation cases use an actual SDK stdio server and cover pending and
 actionable results, source/schema/account/target changes, unavailable connections,
-and refused remote schema references. The qualified suite has 110 Python cases
+and refused remote schema references. The source-qualified suite has 114 Python cases
 and nine Node cases. Real provider accounts and remote source enforcement remain
 separate acceptance work.
 
@@ -273,3 +273,15 @@ version per selection, not full-store scanning, credential migration, package
 adoption or mutable legacy UI state. Source selection/export, browser rendering,
 actual legacy user stores and the host administrative migration flow need their
 own qualification.
+
+Review/apply serialization correction: a new import revalidates the complete
+source, digest, mapping and normalized configuration only after acquiring the
+manager lock. Working-directory review also binds the directory's device/inode,
+so same-path replacement invalidates approval. The exact validated row is saved
+without a second normalization or an intervening await. This is admission-time
+identity validation, not a filesystem lease or a promise about a later connection.
+Uncommitted predecessor cwd reviews need a fresh review. Exact already committed
+receipts remain passive/recoverable without resolving or adopting a new directory;
+retained sources, receipts and registrations are not rewritten by this correction.
+The successor's installed import checks are separate from the sealed predecessor's
+full installed/public-host evidence; see correctiveQualification in QUALIFICATION.json.

@@ -4,6 +4,8 @@ import hashlib
 import json
 import re
 import time
+import stat
+from pathlib import Path
 
 from .quiescence import token
 
@@ -61,6 +63,10 @@ class LegacyImport:
                 'sourceSha256': receipt['sourceSha256']}
 
     def plan(self, args):
+        value, review, binding, _ = self._plan(args)
+        return value, review, binding
+
+    def _plan(self, args):
         if not isinstance(args, dict) or set(args) - {'sourceId', 'source', 'sourceSha256', 'scope', 'legacySessionId', 'reviewDigest', 'commandId'}:
             raise ValueError('Exact selected import request required')
         token(args.get('sourceId'), 'source identity')
@@ -73,6 +79,7 @@ class LegacyImport:
         value = parse(text)
         if not isinstance(value, dict) or value.get('format') != 'amplifier-unified-mcp-legacy-selection/v1':
             raise ValueError('Unsupported selected legacy format')
+        normalized = None
         kind = value.get('kind')
         scope = self.b.scope(args.get('scope'), session=kind == 'artifact')
         if kind == 'registration':
@@ -104,6 +111,11 @@ class LegacyImport:
             # Bind the reviewed effective cwd/defaults, not an unresolved symlink.
             effective = {key:copy.deepcopy(normalized[key]) for key in ACTIONS['smartTools.configure'][1]['properties'] if key in normalized and normalized[key] is not None}
             target = {'kind': kind, 'id': identity, 'scope': scope, 'configuration': effective}
+            if normalized['cwd']:
+                directory = Path(normalized['cwd']).stat(follow_symlinks=False)
+                if not stat.S_ISDIR(directory.st_mode):
+                    raise ValueError('Reviewed working directory is no longer a directory')
+                target['cwdIdentity'] = {'device':directory.st_dev, 'inode':directory.st_ino}
         elif kind == 'artifact':
             if set(value) != {'format', 'kind', 'artifact', 'body', 'binding', 'result'}:
                 raise ValueError('Select artifact, hydrated body, binding and result explicitly')
@@ -143,7 +155,7 @@ class LegacyImport:
             raise ValueError('Unsupported selected legacy kind')
         review = {'version': 1, 'sourceId': args['sourceId'], 'sourceSha256': source_digest, 'target': target,
                   'credentials': 'not-transferred', 'execution': 'not-replayed', 'access': 'disconnected' if kind == 'registration' else 'read-only'}
-        return value, review, sha(canonical(review))
+        return value, review, sha(canonical(review)), normalized
 
     def collision(self, review):
         target = review['target']
@@ -166,21 +178,36 @@ class LegacyImport:
         async with self.b.quiescence.effect():
             return await self._apply(args)
 
+    def completed(self, args):
+        """Exact committed retries are passive, including predecessor receipts."""
+        if not isinstance(args, dict) or set(args) - {'sourceId','source','sourceSha256','scope','legacySessionId','reviewDigest','commandId'}:
+            raise ValueError('Exact selected import request required')
+        row = self.b.db.execute('SELECT value FROM legacy_imports WHERE command=?', (args['commandId'],)).fetchone()
+        if row is None and isinstance(args.get('reviewDigest'), str):
+            row = self.b.db.execute('SELECT value FROM legacy_imports WHERE binding=?', (args['reviewDigest'],)).fetchone()
+        if row is None:
+            return None
+        receipt = json.loads(row[0])
+        expected = {'sourceId':receipt['sourceId'], 'sourceSha256':receipt['sourceSha256'],
+                    'scope':receipt['target']['scope'], 'reviewDigest':receipt['reviewDigest'],
+                    'legacySessionId':receipt['target'].get('legacySessionId')}
+        if any(args.get(key) != value for key,value in expected.items()) or args.get('source') != self.b.manager.get_blob(receipt['original']['$resource']):
+            raise ValueError('Import command belongs to a different reviewed source')
+        return {**receipt, 'duplicate':True}
+
     async def _apply(self, args):
-        token(args.get('commandId'), 'import command')
-        value, review, binding = self.plan(args)
-        if args.get('reviewDigest') != binding:
-            raise ValueError('Review the exact source and destination mapping before import')
+        args = copy.deepcopy(args)
         b = self.b
         async with b.manager.lock:
-            prior = b.db.execute('SELECT scope,binding,value FROM legacy_imports WHERE command=?', (args['commandId'],)).fetchone()
-            if prior:
-                if prior[:2] != (args['scope'], binding):
-                    raise ValueError('Import command belongs to a different reviewed source')
-                return {**json.loads(prior[2]), 'duplicate': True}
-            prior = b.db.execute('SELECT value FROM legacy_imports WHERE binding=?', (binding,)).fetchone()
-            if prior:
-                return {**json.loads(prior[0]), 'duplicate': True}
+            # The wait may outlive a filesystem/configuration change. Validate
+            # after acquisition and retain this exact row through the commit.
+            token(args.get('commandId'), 'import command')
+            completed = self.completed(args)
+            if completed is not None:
+                return completed
+            value, review, binding, normalized = self._plan(args)
+            if args.get('reviewDigest') != binding:
+                raise ValueError('Review the exact source and destination mapping before import')
             self.collision(review)
             target = review['target']
             receipt = {'commandId': args['commandId'], 'status': 'completed', 'outcome': 'confirmed', **review,
@@ -191,7 +218,7 @@ class LegacyImport:
                 b.db.execute('BEGIN IMMEDIATE')
                 receipt['original'] = b.manager.put_blob(args['source'])
                 if target['kind'] == 'registration':
-                    row = b.manager.registration(target['configuration'])
+                    row = normalized
                     row['legacyImport'] = {'sourceId': args['sourceId'], 'reviewDigest': binding}
                     servers = [*b.manager.state['servers'], row]
                     stored = [{k:v for k,v in row.items() if k not in {'tools','loadedSchemas','capabilities','instructions','login','authorization'}} for row in servers]
