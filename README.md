@@ -2,6 +2,14 @@
 
 This owner retains the real MCP SDK transport, OAuth, connector-attested account identity, progressive discovery, resources, isolated Smart Tool installation, and MCP App bindings. It has no private host or whole application imports. It is separate from native Amplifier's `tool-mcp` module. Node package: `@amplifier/unified-mcp-capabilities`; independently installable Python service: `amplifier-unified-mcp`. Node 22.16+/Python 3.13+ required. Lockfiles record exact tested dependencies. Neither package starts a model.
 
+## Direction and contracts
+
+Start with the [local vision](docs/VISION.md), [owner contract v1](contracts/mcp-owner.v1.md),
+and [contributor entry](AGENTS.md). The packet applies the approved shared family
+direction, maps executable checks, and keeps unqualified acceptance gates explicit.
+It adds no runtime scope or new ratification. [QUALIFICATION.json](QUALIFICATION.json)
+remains evidence for the sealed implementation baseline, not a new documentation-run result.
+
 ## Run and compose
 
 ```sh
