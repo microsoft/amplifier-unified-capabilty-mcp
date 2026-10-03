@@ -1,6 +1,6 @@
 """Session-scoped MCP application owner. No application snapshots or private host objects."""
 from __future__ import annotations
-from .retention import selected, result, exists
+from .retention import selected, result, exists, managed_selected, add_protection
 import asyncio, copy, hashlib, json, time, uuid
 from urllib.parse import urlencode
 import jsonschema
@@ -28,10 +28,17 @@ class Broker:
   self.db.execute("CREATE INDEX IF NOT EXISTS presentations ON views(scope,json_extract(value,'$.presentationKey'),revision)")
   self.db.execute("CREATE INDEX IF NOT EXISTS retention_commands ON commands(scope,json_extract(value,'$.status'),json_extract(value,'$.outcome'))");self.db.commit();self.locks={};self.active=0
   self.quiescence=Quiescence(self.db,self.quiescence_work,self.manager.may_be_idle)
- def retention_references(self,args):
+ def retention_references(self,args,*,managed=False):
   class Held:pass
-  held=Held();held.fence=self.quiescence.current();sessions=selected(held,args)
+  held=Held();held.fence=self.quiescence.current();sessions=managed_selected(held,args) if managed else selected(held,args)
   return result(sessions,lambda s:['mcp-unsettled'] if exists(self.db,"SELECT 1 FROM commands WHERE scope IN (?,'host') AND (json_extract(value,'$.status') IN ('pending','running','queued','unknown') OR json_extract(value,'$.outcome')='unknown') LIMIT 1",(s,)) else [])
+ def managed_references(self,args):
+  base=self.retention_references(args,managed=True)
+  # Views may contain opaque remote/file resource bindings. Preserve them pending
+  # an owner-specific detachment review rather than parsing arbitrary result prose.
+  if exists(self.db,"SELECT 1 FROM records WHERE id='servers' AND value NOT IN ('[]','null') LIMIT 1"):
+   base={**base,'coverage':'partial','omissions':[{'reason':'mcp-server-file-dependencies-unclassified','scope':'owner'}]}
+  return add_protection(base,args['sessions'],lambda s:['mcp-resource-binding'] if exists(self.db,'SELECT 1 FROM views WHERE scope=? LIMIT 1',(s,)) else [])
  def scope(self,value,*,session=False):
   if not isinstance(value,str) or len(value)>8192 or not (value.startswith('ahp-session:/') or not session and value=='host'):raise ValueError('Trusted session scope is required.')
   return value
