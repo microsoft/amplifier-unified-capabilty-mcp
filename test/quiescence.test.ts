@@ -6,11 +6,11 @@ const proof={verified:true as const,...c,outcome:'unchanged' as const,receiptId:
 const pause=()=>{let release!:()=>void;const promise=new Promise<void>(resolve=>release=resolve);return {promise,release}};
 
 test('Node post-effect artifact registration remains busy until its complete owner action settles',async()=>{
- const entered=pause(),finish=pause();let acquisitions=0;
- const owner=createMCPCapabilities({broker:{request:async(method,args)=>{if(method==='quiescence/acquire'){acquisitions++;return {held:true,ownerId:args.ownerId,fenceId:args.context.fenceId};}if(method==='snapshot')return {};return {descriptor:{id:'artifact'},receipt:{id:'command',status:'completed'}};},close:async()=>{}},inspectSession:async()=>({workingDirectory:'/owned'}),registerExternal:async(_context,descriptor)=>{entered.release();await finish.promise;return descriptor;}});
+ const entered=pause(),finish=pause();let acquisitions=0,idle=0;
+ const owner=createMCPCapabilities({onMayBeIdle:()=>{idle++;},broker:{request:async(method,args)=>{if(method==='quiescence/acquire'){acquisitions++;return {held:true,ownerId:args.ownerId,fenceId:args.context.fenceId};}if(method==='snapshot')return {};return {descriptor:{id:'artifact'},receipt:{id:'command',status:'completed'}};},close:async()=>{}},inspectSession:async()=>({workingDirectory:'/owned'}),registerExternal:async(_context,descriptor)=>{entered.release();await finish.promise;return descriptor;}});
  try{
   const work=owner.action({version:1,channel:'ahp-session:/one',topic:'connectors',operation:'smartTools.open',commandId:'one',args:{}},{clientId:'c'});await entered.promise;
-  assert.equal(await owner.quiescenceParticipant().acquire(c),null);assert.equal(acquisitions,0);finish.release();await work;assert.ok(await owner.quiescenceParticipant().acquire(c));
+  assert.equal(await owner.quiescenceParticipant().acquire(c),null);assert.equal(acquisitions,0);assert.equal(idle,0);finish.release();await work;await new Promise(r=>setTimeout(r,5));assert.equal(idle,1);assert.ok(await owner.quiescenceParticipant().acquire(c));
   await assert.rejects(owner.oauthCallback([], 'http://127.0.0.1:8941'),/intake is closed/);
  }finally{finish.release();await owner.close();}
 });
@@ -45,4 +45,9 @@ test('a private RPC timeout preserves the running owner and bounded late request
   await assert.rejects(connection.request('slow',{}),/owner remains alive/);const before=(await readFile(log,'utf8')).length;await new Promise(r=>setTimeout(r,40));assert.ok((await readFile(log,'utf8')).length>before);
   assert.deepEqual(await connection.request('snapshot',{}),{recorded:true});await new Promise(r=>setTimeout(r,220));assert.deepEqual(await connection.request('snapshot',{}),{recorded:true});
  }finally{await connection.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('private broker completion notification wakes caller without asserting idle',async()=>{
+ const {BrokerConnection}=await import('../src/index.js');let signalled=0;const script="require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:r.id,result:r.method==='initialize'?{protocolVersion:1}:{ok:true}})+'\\n');if(r.method==='finish')process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'broker/mayBeIdle',params:{}})+'\\n')});";
+ const connection=new BrokerConnection({command:process.execPath,args:['-e',script]},undefined,()=>{signalled++;});try{await connection.request('finish',{});await new Promise(r=>setTimeout(r,10));assert.equal(signalled,1)}finally{await connection.close()}
 });

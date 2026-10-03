@@ -85,7 +85,7 @@ async def observed(transport, connection):
 
 
 class Connection:
-    def __init__(self, config, secrets, changed=None, auth=None, handshake_timeout=30):
+    def __init__(self, config, secrets, changed=None, auth=None, handshake_timeout=30, on_idle=None):
         self.config = copy.deepcopy(config)
         self.secrets, self.changed, self.auth = secrets, changed, auth
         self.queue = asyncio.Queue(maxsize=64)
@@ -100,6 +100,7 @@ class Connection:
         self.account_authorization = None
         self.last_identity_authorization = None
         self.task = asyncio.create_task(self._run())
+        if on_idle:self.task.add_done_callback(lambda _:on_idle())
 
     async def _message(self, message):
         data = message.model_dump(mode="json", by_alias=True) if hasattr(message, "model_dump") else {}

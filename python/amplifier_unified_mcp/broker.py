@@ -26,7 +26,7 @@ class Broker:
   self.db.execute("UPDATE commands SET value=json_set(value,'$.status','interrupted','$.outcome','unknown','$.error','Broker restarted; work was not replayed.') WHERE json_extract(value,'$.status')='running'")
   self.db.execute("CREATE INDEX IF NOT EXISTS presentations ON views(scope,json_extract(value,'$.presentationKey'),revision)")
   self.db.commit();self.locks={};self.active=0
-  self.quiescence=Quiescence(self.db,self.quiescence_work)
+  self.quiescence=Quiescence(self.db,self.quiescence_work,self.manager.may_be_idle)
  def scope(self,value,*,session=False):
   if not isinstance(value,str) or len(value)>8192 or not (value.startswith('ahp-session:/') or not session and value=='host'):raise ValueError('Trusted session scope is required.')
   return value

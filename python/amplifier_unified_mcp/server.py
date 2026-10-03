@@ -9,6 +9,9 @@ async def run(config,output):
  def changed(value):
   output.write(json.dumps({'jsonrpc':'2.0','method':'broker/changed','params':value})+'\n');output.flush()
  broker.manager.on_change=changed
+ def may_be_idle():
+  output.write(json.dumps({'jsonrpc':'2.0','method':'broker/mayBeIdle','params':{}})+'\n');output.flush()
+ broker.manager.on_may_be_idle=may_be_idle
  async def dispatch(row):
   identity=row.get('id')
   try:

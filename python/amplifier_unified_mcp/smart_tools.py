@@ -144,6 +144,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         self.background_io = set()
         self.revision = 0
         self.on_change = None
+        self.on_may_be_idle = None
         self._state = {name: json.loads(row[0]) if (row := self.db.execute("SELECT value FROM records WHERE id=?", (name,)).fetchone()) else [] for name in ("servers", "catalog", "installations")}
         for server in self._state['servers']:
             server.update(status='disconnected', connectionState='disconnected', tools=[], loadedSchemas={}, catalogState='stale', account={'status':'unconfirmed','expected':copy.deepcopy(server['accountBinding']),'revision':server.get('accountRevision',0)} if server.get('accountBinding') else {'status':'unknown'},login={'id':server['id'],'phase':'idle'})
@@ -481,11 +482,17 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         # The host decides which requested permissions it actually grants.
         return {"uri": uri, "html": self._redact(html), "csp": ui.get("csp", {}), "permissions": ui.get("permissions", {}), "meta": _bounded(meta, 32_000), "tools": [tool["name"] for tool in tools if _visible(tool, "app")]}
 
+    def may_be_idle(self):
+        try:
+            if self.on_may_be_idle:self.on_may_be_idle()
+        except Exception:pass  # Advisory wakeups never alter effect outcomes.
+
     async def background_thread(self, callback, *args):
         task = asyncio.create_task(asyncio.to_thread(callback, *args))
         self.background_io.add(task)
         def finished(done):
             self.background_io.discard(done)
+            self.may_be_idle()
             if not done.cancelled():done.exception()
         task.add_done_callback(finished)
         return await asyncio.shield(task)

@@ -88,7 +88,7 @@ class ManagedUpdates:
                 for name, variable in row.get('env', {}).items():
                     if not os.environ.get(variable): raise ValueError(f'Environment variable {variable} is not set.')
                     secrets[name] = os.environ[variable]
-                connection = Connection(row, secrets)
+                connection = Connection(row, secrets, on_idle=self.may_be_idle)
                 connections[key] = connection
                 info = await asyncio.wait_for(asyncio.shield(connection.ready), 30)
                 definitions, values = await self._discover_catalog(connection)

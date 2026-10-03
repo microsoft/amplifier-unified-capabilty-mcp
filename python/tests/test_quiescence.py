@@ -92,7 +92,8 @@ async def test_inflight_request_and_detached_oauth_are_counted_before_acquire(tm
 
 
 async def test_cancelled_caller_does_not_hide_thread_io_still_running(tmp_path):
-    b=Broker(tmp_path);entered=threading.Event();release=threading.Event()
+    b=Broker(tmp_path);entered=threading.Event();release=threading.Event();notices=[]
+    b.manager.on_may_be_idle=lambda:notices.append(len(b.manager.background_io))
     def run():entered.set();release.wait(timeout=10)
     work=asyncio.create_task(b.manager.background_thread(run))
     try:
@@ -101,5 +102,6 @@ async def test_cancelled_caller_does_not_hide_thread_io_still_running(tmp_path):
         result=b.quiescence.acquire('mcp',context());assert not result['held'];assert result['counts']['backgroundIO']==1
         release.set()
         while b.manager.background_io:await asyncio.sleep(.001)
+        assert notices==[0]
         assert b.quiescence.acquire('mcp',context('settled'))['held']
     finally:release.set();await b.close()

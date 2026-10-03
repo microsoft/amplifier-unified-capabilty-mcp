@@ -177,6 +177,7 @@ class Authorization:
                     future.exception()
                 session.pop("callback", None)
         session["task"] = asyncio.create_task(run())
+        session["task"].add_done_callback(lambda _:self.manager.may_be_idle())
         await self.publish(identity)
         return self.status(identity)
 

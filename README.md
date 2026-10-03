@@ -125,3 +125,5 @@ status/control, not an atomic generic peer-retirement guarantee. Task-aware or
 reviewed peer retirement is a future explicit capability. Connected generic peers
 therefore remain a documented limitation of automatic update/recovery admission,
 not evidence of complete automatic-updater compatibility.
+
+The optional `onMayBeIdle()` callback coalesces advisory wakeups after complete Node effects and private broker OAuth, SDK connection, and detached filesystem completions. It carries no state or idle proof: the caller must acquire the held participant again. Notification failures cannot change an effect result.

@@ -12,10 +12,12 @@ export interface Options {
  inspectSession:(uri:string,context:{clientId:string})=>Promise<{uri?:string;workingDirectory?:string}>;
  registerExternal:(context:{session:string;workingDirectory?:string},descriptor:Json)=>Promise<Json>;
  onInvalidate?:(topic:string,scope:string)=>void;
+ /** Advisory completion signal; acquisition still proves and holds idle authority. */
+ onMayBeIdle?:()=>void;
 }
 export class BrokerConnection {
  private child?:ChildProcessWithoutNullStreams;private pending=new Map<number,{resolve:(value:any)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();private id=0;private ready?:Promise<void>;private closed=false;
- constructor(private options:BrokerOptions,private changed?:()=>void){}
+ constructor(private options:BrokerOptions,private changed?:()=>void,private idle?:()=>void){}
  private start(){
   if(this.closed)throw Error('MCP broker connection closed; uncertain work was not replayed.');
   if(!this.ready)this.ready=(async()=>{
@@ -23,11 +25,11 @@ export class BrokerConnection {
    child.stderr.on('data',()=>{}); // Owner writes diagnostics; never forward OAuth data to clients.
    child.on('error',()=>this.fail('MCP broker failed to start.'));child.on('exit',()=>this.fail('MCP broker exited; admitted outcomes may be unknown. No request was replayed.'));
    let frame=0;child.stdout.on('data',(data:Buffer)=>{for(const b of data){frame=b===10?0:frame+1;if(frame>4_000_000){this.fail('MCP broker frame exceeds 4 MB.');child.kill();break;}}});
-   const lines=createInterface({input:child.stdout});lines.on('line',line=>{let row:Json;try{row=JSON.parse(line);}catch{this.fail('Invalid broker response.');child.kill();return;}if(row.method==='broker/changed'){this.changed?.();return;}const entry=this.pending.get(row.id);if(!entry)return;clearTimeout(entry.timer);this.pending.delete(row.id);row.error?entry.reject(Error(row.error.message)):entry.resolve(row.result);});
+   const lines=createInterface({input:child.stdout});lines.on('line',line=>{let row:Json;try{row=JSON.parse(line);}catch{this.fail('Invalid broker response.');child.kill();return;}if(row.method==='broker/changed'){this.changed?.();return;}if(row.method==='broker/mayBeIdle'){this.idle?.();return;}const entry=this.pending.get(row.id);if(!entry)return;clearTimeout(entry.timer);this.pending.delete(row.id);row.error?entry.reject(Error(row.error.message)):entry.resolve(row.result);});
    const hello=await this.send('initialize',{});if(hello.protocolVersion!==1)throw Error('Unsupported MCP broker protocol.');
   })();return this.ready;
  }
- private fail(message:string){this.closed=true;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error(message));}this.pending.clear();}
+ private fail(message:string){this.closed=true;for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error(message));}this.pending.clear();this.idle?.();}
  private send(method:string,params:Json):Promise<any>{
   if(this.closed||!this.child)throw Error('MCP broker unavailable.');if(this.pending.size>=32)throw Error('MCP broker request capacity reached.');
   const id=++this.id,text=JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n';if(Buffer.byteLength(text)>4_000_000)throw Error('MCP broker request exceeds 4 MB.');
@@ -43,10 +45,11 @@ function sessionOf(context:Context){return typeof context.session==='string'?con
 export class MCPCapabilities {
  readonly manifest={version:1,topics:{connectors:{uri:'amplifier-capability://mcp/connectors',version:1,watch:true}},actions:Object.fromEntries(NAMES.map(name=>['smartTools.'+name,{topic:'connectors',operation:'smartTools.'+name,method:'x-amplifier/capabilityAction'}]))};
  readonly quiescenceAccess=Object.fromEntries(['list','readResult','result','viewStatus','authStatus'].map(name=>['smartTools.'+name,'read' as const]));
+ private idleNotice?:ReturnType<typeof setTimeout>;
  private activeEffects=0;private gate?:{ownerId:string;context:QuiescenceContext};
  private broker:Options['broker']&{request?:(method:string,args:Json)=>Promise<any>};private sequence=0;private scopes=new Map<string,number>();private notification?:ReturnType<typeof setTimeout>;
- constructor(private options:Options){this.broker='request' in options.broker?options.broker:new BrokerConnection(options.broker,()=>this.changed());}
- private async effect<T>(work:()=>Promise<T>):Promise<T>{if(this.gate)throw Error('MCP owner intake is closed for quiescence; no new effect was admitted.');this.activeEffects++;try{return await work();}finally{this.activeEffects--;}}
+ constructor(private options:Options){this.broker='request' in options.broker?options.broker:new BrokerConnection(options.broker,()=>this.changed(),()=>this.mayBeIdle());}
+ private async effect<T>(work:()=>Promise<T>):Promise<T>{if(this.gate)throw Error('MCP owner intake is closed for quiescence; no new effect was admitted.');this.activeEffects++;try{return await work();}finally{this.activeEffects--;this.mayBeIdle();}}
  inspectQuiescence=async()=>({...await this.call('quiescence/inspect',{}),nodeEffects:this.activeEffects});
  quiescenceParticipant(ownerId='mcp'){
   if(!ownerId||ownerId.length>200)throw Error('Bounded MCP owner identity required');
@@ -62,6 +65,7 @@ export class MCPCapabilities {
   },reconcileRelease:async(context:Readonly<QuiescenceContext>&{outcome:'ready'|'unchanged';proof:QuiescenceProof})=>release(context,context.outcome,context.proof)};
  }
  private call(method:string,args:Json){return this.broker.request!(method,args);}
+ private mayBeIdle(){if(this.idleNotice)return;this.idleNotice=setTimeout(()=>{this.idleNotice=undefined;try{Promise.resolve(this.options.onMayBeIdle?.()).catch(()=>{})}catch{}},0);this.idleNotice.unref();}
  private changed(){if(this.notification)return;this.notification=setTimeout(()=>{this.notification=undefined;for(const [scope,at] of this.scopes)if(Date.now()-at<300000)this.options.onInvalidate?.('connectors',scope);},20);}
  private async authorize(scope:string,context:Context){this.scopes.delete(scope);this.scopes.set(scope,Date.now());while(this.scopes.size>64)this.scopes.delete(this.scopes.keys().next().value!);if(scope==='host')return {};if(!scope.startsWith('ahp-session:/')||scope.length>8192)throw Error('AHP session scope required.');if(context.session&&sessionOf(context)!==scope)throw Error('Session scope does not match authenticated context.');return this.options.inspectSession(scope,{clientId:context.clientId});}
  private record(scope:string,data:Json){return {topic:'connectors',scope,revision:++this.sequence,data:{mcp:data}};}
@@ -99,6 +103,6 @@ export class MCPCapabilities {
   await this.authorize(session,{clientId:'',session});
   const execute=()=>this.call('observation',{scope:session,operation,args});return operation==='check'?execute():this.effect(execute);
  };
- async close(){if(this.notification)clearTimeout(this.notification);await (this.broker as {close:()=>Promise<void>}).close();}
+ async close(){if(this.notification)clearTimeout(this.notification);await (this.broker as {close:()=>Promise<void>}).close();if(this.idleNotice)clearTimeout(this.idleNotice);}
 }
 export function createMCPCapabilities(options:Options){return new MCPCapabilities(options);}

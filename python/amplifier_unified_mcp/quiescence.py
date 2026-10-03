@@ -12,8 +12,9 @@ def token(value, name):
 
 
 class Quiescence:
-    def __init__(self, db, work):
+    def __init__(self, db, work, on_idle=lambda:None):
         self.db, self.work, self.active = db, work, 0
+        self.on_idle = on_idle
         db.executescript('CREATE TABLE IF NOT EXISTS owner_quiescence(id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS owner_quiescence_receipts(fence TEXT PRIMARY KEY,value TEXT NOT NULL);')
         old = self.current()
         if old:
@@ -42,6 +43,7 @@ class Quiescence:
             yield
         finally:
             self.active -= 1
+            self.on_idle()
 
     def acquire(self, owner_id, context):
         token(owner_id, 'owner identity')

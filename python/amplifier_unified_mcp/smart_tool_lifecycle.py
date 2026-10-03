@@ -187,7 +187,7 @@ class Lifecycle:
             if row.get("auth") == "oauth" and auth is None:
                 auth = await self.oauth.provider(identity, interactive=False)
             await self._change(lambda _: row.update(status="connecting", connectionState="connecting", error=None))
-            connection = Connection(row, secrets, self._connection_changed, auth, auth_timeout)
+            connection = Connection(row, secrets, self._connection_changed, auth, auth_timeout, on_idle=self.may_be_idle)
             self.connections[identity] = connection
             try:
                 info = self._redact(_bounded(await asyncio.wait_for(asyncio.shield(connection.ready), auth_timeout), 128_000))
