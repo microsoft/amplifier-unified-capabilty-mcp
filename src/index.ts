@@ -102,6 +102,17 @@ export class MCPCapabilities {
   const value=part==='resources'?await this.effect(read):await read();
   return {data:part==='document'?value:JSON.stringify(value),encoding:'utf-8',contentType:part==='document'?'text/html;profile=mcp-app':'application/json'};
  };
+ /** Trusted offline migration composition only; never advertise as a client action. */
+ legacyReview=async(args:Json,context:{clientId:string})=>{await this.authorize(args.scope,context);return this.call('legacy/review',args);};
+ legacyReceipt=async(commandId:string,scope:string,context:{clientId:string})=>{await this.authorize(scope,context);return this.call('legacy/receipt',{commandId,scope});};
+ legacySource=async(args:Json,context:{clientId:string})=>{await this.authorize(args.scope,context);return this.call('legacy/source',args);};
+ legacyImport=async(args:Json,context:{clientId:string})=>this.effect(async()=>{
+  const trusted=await this.authorize(args.scope,context);
+  const receipt=await this.call('legacy/import',args);
+  if(receipt.descriptor)await this.options.registerExternal({session:args.scope,workingDirectory:trusted.workingDirectory},receipt.descriptor);
+  this.options.onInvalidate?.('connectors',args.scope);
+  return receipt;
+ });
  /** Only the configured host callback route may call this; it is never a capability action. */
  oauthCallback=async(query:Array<[string,string]>,origin:string)=>this.effect(()=>this.call('oauth/callback',{query,origin}));
  /** Trusted product owner only. Qualification is not a tool's self-attestation. */

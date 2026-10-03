@@ -27,6 +27,8 @@ class Broker:
   self.db.execute("UPDATE commands SET value=json_set(value,'$.status','interrupted','$.outcome','unknown','$.error','Broker restarted; work was not replayed.') WHERE json_extract(value,'$.status')='running'")
   self.db.execute("CREATE INDEX IF NOT EXISTS presentations ON views(scope,json_extract(value,'$.presentationKey'),revision)")
   self.db.execute("CREATE INDEX IF NOT EXISTS retention_commands ON commands(scope,json_extract(value,'$.status'),json_extract(value,'$.outcome'))");self.db.commit();self.locks={};self.active=0
+  from .legacy_import import LegacyImport
+  self.legacy=LegacyImport(self)
   self.quiescence=Quiescence(self.db,self.quiescence_work,self.manager.may_be_idle)
  def retention_references(self,args,*,managed=False):
   class Held:pass
@@ -139,7 +141,7 @@ class Broker:
   return json.loads(row[0])
  def uri(self,view,part):return 'amplifier-mcp://views/'+view['id']+'/'+part+'?'+urlencode({'session':view['sessionId'],'revision':view['revision']})
  def descriptor(self,view):
-  b=view['mcp'];compact={k:b[k] for k in ('serverId','tool','operationId','contractFingerprint') if k in b}
+  b=view['mcp'];compact={} if view.get('legacyImport') else {k:b[k] for k in ('serverId','tool','operationId','contractFingerprint') if k in b}
   return {'id':view['id'],'sessionId':view['sessionId'],'kind':'mcp-app','title':view['title'],'providerRevision':view['revision'],'bodyUri':self.uri(view,'body'),'resourceUri':self.uri(view,'document'),'mcp':compact,'resources':{key:self.uri(view,key) for key in ('status','document','result','tools','resources')}}
  def save_view(self,view):
   self.db.execute('INSERT INTO views VALUES (?,?,?,?)',(view['id'],view['revision'],view['sessionId'],json.dumps(view)))
@@ -148,6 +150,7 @@ class Broker:
   b=view.get('mcp') or {};result={'canvasId':view['id'],'bindingRevision':binding_revision(b),'source':'available','canReconnect':False,'revision':view['revision']}
   def state(code,message,reconnect=False):return {**result,'status':code,'message':message,'canReconnect':reconnect}
   if not self.db.execute('SELECT 1 FROM blobs WHERE id=?',(view.get('document',{}).get('$resource'),)).fetchone():return {**state('source_unavailable','The original saved document is unavailable; its reference is retained and no work was replayed.'),'source':'unavailable'}
+  if view.get('legacyImport'):return state('imported_read_only','Imported original document; live grants were not transferred. Open a separately reviewed new tool view.')
   if view['revision']!=self.view(view['sessionId'],view['id'])['revision']:return state('saved_version','Saved immutable view; select the current version for live access.')
   server=next((s for s in self.manager.state['servers'] if s['id']==b.get('serverId')),None)
   if not server or configuration_key(server)!=b.get('configuration'):return state('configuration_changed','The server configuration changed. Open a new view after reviewing it.')

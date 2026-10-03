@@ -23,6 +23,10 @@ async def run(config,output):
    elif method=='quiescence.managedFiles':result=broker.managed_references(p)
    elif method=='quiescence/inspect':result=broker.quiescence.inspect()
    elif method=='quiescence/release':result=broker.quiescence.release(p['ownerId'],p['context'],p['outcome'],p.get('proof'))
+   elif method=='legacy/review':result=broker.legacy.review(p)
+   elif method=='legacy/receipt':result=broker.legacy.receipt(p['commandId'],p['scope'])
+   elif method=='legacy/source':result=broker.legacy.source(p['commandId'],p['scope'],p.get('offset',0),p.get('limit',16000))
+   elif method=='legacy/import':result=await broker.legacy.apply(p)
    elif method=='actions':result={name:{'description':value[0],'schema':value[1]} for name,value in ACTIONS.items()}
    elif method=='snapshot':result=broker.snapshot(p['scope'],offset=p.get('offset',0),limit=p.get('limit',25))
    elif method=='action':result=await broker.action(p['scope'],p['operation'],p.get('args',{}),p['commandId'],origin=p.get('origin','ui'))
