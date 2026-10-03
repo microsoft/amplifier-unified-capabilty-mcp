@@ -1,6 +1,7 @@
 """Private durable owner fence. Historical receipts are never execution evidence."""
 from contextlib import asynccontextmanager
 import json
+from .service_lifecycle import service_identity, service_proof
 
 READ_ACTIONS = frozenset({'smartTools.list', 'smartTools.readResult', 'smartTools.result', 'smartTools.viewStatus', 'smartTools.authStatus'})
 
@@ -15,6 +16,7 @@ class Quiescence:
     def __init__(self, db, work, on_idle=lambda:None):
         self.db, self.work, self.active = db, work, 0
         self.on_idle = on_idle
+        self.live_fence = None
         db.executescript('CREATE TABLE IF NOT EXISTS owner_quiescence(id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS owner_quiescence_receipts(fence TEXT PRIMARY KEY,value TEXT NOT NULL);')
         old = self.current()
         if old:
@@ -50,12 +52,15 @@ class Quiescence:
         if not isinstance(context, dict):
             raise ValueError('Exact host context required.')
         value = {key: token(context.get(key), key) for key in ('fenceId', 'commandId', 'purpose', 'instanceId', 'dataScope')}
-        if value['purpose'] not in {'distribution-update', 'recovery'}:
+        if value['purpose'] not in {'distribution-update', 'recovery', 'service-stop'}:
             raise ValueError('Unsupported quiescence purpose.')
+        if value['purpose']=='service-stop':
+            value['serviceIdentity']=service_identity(context.get('serviceIdentity'))
+            if any(value['serviceIdentity'][key]!=value[key] for key in ('instanceId','dataScope')):raise ValueError('Service identity differs from MCP fence')
         value.update(ownerId=owner_id, state='held')
         old = self.current()
         if old:
-            if any(old.get(key) != value[key] for key in ('ownerId','fenceId','commandId','purpose','instanceId','dataScope')):
+            if any(old.get(key) != value[key] for key in ('ownerId','fenceId','commandId','purpose','instanceId','dataScope')) or old.get('serviceIdentity')!=value.get('serviceIdentity'):
                 raise ValueError('A different durable MCP fence requires reconciliation.')
             if old['state'] != 'held':
                 raise ValueError('The MCP fence is unknown; inspect and reconcile, never reacquire.')
@@ -67,6 +72,7 @@ class Quiescence:
         if self.active or work['gaps'] or any(work['counts'].values()):
             return {'held': False, 'executed': False, 'activeRequests': self.active, **work}
         self.save(value)
+        self.live_fence = value['fenceId']
         return {'held': True, 'ownerId': owner_id, 'fenceId': value['fenceId']}
 
     def release(self, owner_id, context, outcome, proof):
@@ -76,15 +82,17 @@ class Quiescence:
         if not old:
             row = self.db.execute('SELECT value FROM owner_quiescence_receipts WHERE fence=?', (fence_id,)).fetchone()
             prior = json.loads(row[0]) if row else None
-            if prior and prior.get('state') == 'released' and prior.get('ownerId') == owner_id and all(prior.get(key)==context.get(key) for key in ('fenceId','commandId','purpose','instanceId','dataScope')) and prior.get('releaseSignature')==signature:
+            if prior and prior.get('state') == 'released' and prior.get('ownerId') == owner_id and all(prior.get(key)==context.get(key) for key in ('fenceId','commandId','purpose','instanceId','dataScope')) and prior.get('serviceIdentity')==context.get('serviceIdentity') and prior.get('releaseSignature')==signature:
                 return {'released': True, 'duplicate': True}
             raise ValueError('Exact retained MCP fence required.')
-        if old['ownerId'] != owner_id or old['fenceId'] != fence_id or any(old.get(key) != context.get(key) for key in ('commandId','purpose','instanceId','dataScope')):
+        if old['ownerId'] != owner_id or old['fenceId'] != fence_id or any(old.get(key) != context.get(key) for key in ('commandId','purpose','instanceId','dataScope')) or old.get('serviceIdentity')!=context.get('serviceIdentity'):
             raise ValueError('MCP fence context differs.')
         if outcome == 'unknown':
+            self.live_fence = None
             old['state'] = 'unknown'; self.save(old)
             return {'released': False, 'intakeClosed': True}
-        refused = proof == {'kind': 'admission-refused'} and old['state'] == 'held' and outcome == 'unchanged'
+        refused = proof == {'kind': 'admission-refused'} and old['state'] == 'held' and outcome == 'unchanged' and (old['purpose']!='service-stop' or self.live_fence==fence_id)
+        if old['purpose']=='service-stop' and not refused:proof=service_proof(proof,old,outcome)
         verified = isinstance(proof, dict) and proof.get('verified') is True and proof.get('fenceId') == fence_id and proof.get('commandId') == old['commandId'] and proof.get('dataScope') == old['dataScope'] and proof.get('outcome') == outcome and outcome in {'ready','unchanged'}
         if verified:
             token(proof.get('receiptId'), 'authoritative receipt')
@@ -95,4 +103,5 @@ class Quiescence:
         old.update(state='released', outcome=outcome, releaseSignature=signature)
         self.db.execute('INSERT OR REPLACE INTO owner_quiescence_receipts VALUES(?,?)', (fence_id,json.dumps(old)))
         self.db.execute('DELETE FROM owner_quiescence WHERE id=1');self.db.commit()
+        self.live_fence = None
         return {'released': True, 'intakeClosed': False}

@@ -17,7 +17,7 @@ async def run(config,output):
   try:
    if row.get('jsonrpc')!='2.0' or not isinstance(row.get('params',{}),dict):raise ValueError('Invalid request.')
    p=row.get('params',{});method=row['method']
-   if method=='initialize':result={'protocolVersion':1,'capabilities':{'actions':list(ACTIONS),'resources':True,'oauthCallback':True,'quiescence':{'version':1,'held':True}}}
+   if method=='initialize':result={'protocolVersion':1,'capabilities':{'actions':list(ACTIONS),'resources':True,'oauthCallback':True,'quiescence':{'version':1,'held':True,'serviceStop':{'version':1}}}}
    elif method=='quiescence/acquire':result=broker.quiescence.acquire(p['ownerId'],p['context'])
    elif method=='quiescence/inspect':result=broker.quiescence.inspect()
    elif method=='quiescence/release':result=broker.quiescence.release(p['ownerId'],p['context'],p['outcome'],p.get('proof'))
