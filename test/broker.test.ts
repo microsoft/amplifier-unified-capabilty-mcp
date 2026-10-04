@@ -78,3 +78,12 @@ test('damaged authoritative receipt/configuration stores refuse actual broker st
   }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
  });
 });
+
+test('orphan SQLite sidecars refuse actual broker initialization without creating a main file',{skip:!existsSync(python)},async t=>{
+ const {mkdir,stat}=await import('node:fs/promises');
+ for(const suffix of ['-wal','-shm','-journal'])await t.test(suffix,async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'unified-mcp-orphan-'));const config=path.join(dir,'broker.json'),data=path.join(dir,'data'),database=path.join(data,'smart-tools/broker.sqlite3');await mkdir(path.dirname(database),{recursive:true});const sidecar=database+suffix;await writeFile(sidecar,'');const before=await stat(sidecar);await writeFile(config,JSON.stringify({dataDir:data}));
+  const owner=createMCPCapabilities({broker:{command:python,args:['-B','-m','amplifier_unified_mcp.server','--config',config],cwd:root},inspectSession:async()=>({}),registerExternal:async()=>{throw Error('No registration expected');}});
+  try{await assert.rejects(owner.actionSchemas(),/broker exited|unavailable/i);assert.equal(existsSync(database),false);assert.deepEqual(await readFile(sidecar),Buffer.alloc(0));const after=await stat(sidecar);assert.equal(after.ino,before.ino);assert.equal(after.mode,before.mode);}finally{await owner.close();await rm(dir,{recursive:true,force:true});}
+ });
+});

@@ -59,11 +59,14 @@ MCP accounts and live worker adoption require their own acceptance.
 ## Existing broker store admission
 
 MCP3/MCP5/MCP6 also apply before startup advertises owner support. Existing
-SQLite authority must match the declared complete manager or broker profile;
+SQLite authority must match the declared complete manager or broker profile
+through fixed bounded schema metadata reads, without scanning all data rows;
 missing or incompatible authoritative tables refuse before schema creation,
 journal configuration, or restart normalization. Missing receipt tables cannot
 be recreated as empty history, and absent fence state cannot establish open
-intake. Only absent new stores are initialized; intact stores may rebuild
+intake. Only a main file and all SQLite sidecars absent establish new initialization;
+even empty orphan sidecars refuse before a connection or main-file creation.
+Intact stores may rebuild
 indexes. The standalone profile remains valid for its own manager reader, not
 an implicit broker schema migration. [Store integrity checks](../python/tests/test_store_integrity.py)
 cover each authoritative table, both receipt tables, unknown guards, incompatible

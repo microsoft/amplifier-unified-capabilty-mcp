@@ -132,3 +132,41 @@ asyncio.run(seed())
     assert (fingerprint(path), fingerprint(wal)) == before
     # A naive writable validator can checkpoint on close. Read-only admission
     # must preserve both authoritative files and never advertise capability.
+
+@pytest.mark.parametrize('suffix', ['-wal', '-shm', '-journal'])
+@pytest.mark.parametrize('content', [b'', b'owned crash evidence'])
+async def test_orphan_sidecar_refuses_before_any_connection_or_main_creation(tmp_path, monkeypatch, suffix, content):
+    from amplifier_unified_mcp import store
+    folder = tmp_path / 'smart-tools'; folder.mkdir()
+    path = folder / 'broker.sqlite3'; sidecar = path.with_name(path.name + suffix)
+    sidecar.write_bytes(content); sidecar.chmod(0o640)
+    before = fingerprint(sidecar)
+    monkeypatch.setattr(store.sqlite3, 'connect', lambda *a, **k: pytest.fail('Orphan sidecar must refuse before connection'))
+    with pytest.raises(StoreUnavailable, match='sidecars'): Broker(tmp_path)
+    with pytest.raises(StoreUnavailable, match='sidecars'): SmartToolsManager(tmp_path)
+    assert not path.exists() and fingerprint(sidecar) == before
+    assert {p.name for p in folder.iterdir()} == {sidecar.name}
+
+
+async def test_dangling_sidecar_path_does_not_establish_new_store(tmp_path):
+    folder = tmp_path / 'smart-tools'; folder.mkdir()
+    path = folder / 'broker.sqlite3'; sidecar = path.with_name(path.name + '-wal')
+    sidecar.symlink_to(folder / 'absent-owned-target')
+    with pytest.raises(StoreUnavailable, match='sidecars'): Broker(tmp_path)
+    assert not path.exists() and sidecar.is_symlink()
+
+async def test_existing_schema_admission_reads_only_fixed_bounded_metadata(tmp_path, monkeypatch):
+    from amplifier_unified_mcp import store
+    path, _ = await saved(tmp_path)
+    original = store.sqlite3.connect
+    statements = []
+    def connect(*args, **kwargs):
+        db = original(*args, **kwargs)
+        db.set_trace_callback(statements.append)
+        return db
+    monkeypatch.setattr(store.sqlite3, 'connect', connect)
+    store.validate_existing(path, 'broker')
+    assert len(statements) == 1
+    assert 'sqlite_master WHERE name IN' in statements[0]
+    assert 'substr(sql,1,4097)' in statements[0]
+    assert all('quick_check' not in sql and 'integrity_check' not in sql and 'SELECT value' not in sql for sql in statements)

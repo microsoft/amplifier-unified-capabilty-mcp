@@ -107,15 +107,19 @@ Command scope/fingerprint is durable before execution. Tool dispatch marks and c
 
 Startup validates an existing `smart-tools/broker.sqlite3` through a read-only
 connection before setting journal mode, creating indexes, or normalizing receipts.
+Validation reads only the eight required schema entries with bounded DDL text;
+it does not scan database rows or run whole-database integrity checks.
 All eight broker tables retain authoritative configuration, receipt, result,
 view, import, or fence data. Missing or incompatible tables and unreadable,
-empty, or structurally damaged databases refuse owner startup; the database is
+empty databases and unreadable schemas refuse owner startup; the database is
 preserved and no initialization/capability acknowledgement is sent. Crash-left
 WAL contents participate in the read-only check; refusal preserves both the
 database and WAL without checkpointing. There is no
 automatic missing-table repair or request replay. Derived indexes may rebuild
 only after authoritative schema validation. Intentional creation of a previously
-absent database creates the complete requested profile transactionally. An
+absent database with no `-wal`, `-shm`, or `-journal` path creates the complete
+requested profile transactionally. Even an empty or dangling orphan sidecar
+refuses before any connection or main-file creation. An
 interrupted initialization that leaves an existing incomplete file is refused.
 
 The standalone manager retains its three-table profile. A surviving broker table
@@ -123,7 +127,8 @@ requires the complete broker profile even for a manager reader. Opening a
 manager-only or older incomplete schema as a broker is not an inferred upgrade;
 no historical schema migration is declared by this change. Whole-database
 replacement/deletion and valid row deletion are outside structural validation:
-this guard cannot establish historical completeness or reconstruct lost receipts.
+this guard cannot establish historical completeness, unselected data-page
+integrity, or reconstruct lost receipts.
 
 Indexed receipt updates do not serialize unrelated catalogs or installations. Initial records are bounded to 768 KB. MCP source/results retain 2 MB bounds. Limits: 64 registrations, eight explicitly active transports. Identity comes only from connector-attested resource over SDK-authenticated transport, never decoded tokens or browser claims. Exact review revision/issuer/subject remain required. Tokens use private files; environment config stores variable names; returned diagnostics are redacted.
 

@@ -32,10 +32,10 @@ def normalized(sql):
 def validate_existing(path, profile):
     try:
         with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as db:
-            if db.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
-                raise StoreUnavailable('MCP store integrity could not be established.')
+            names = tuple(BROKER_TABLES)
+            slots = ','.join('?' for _ in names)
             tables = {name: (kind, sql) for kind, name, sql in db.execute(
-                "SELECT type,name,sql FROM sqlite_master WHERE type IN ('table','view')")}
+                f"SELECT type,name,substr(sql,1,4097) FROM sqlite_master WHERE name IN ({slots}) AND type IN ('table','view')", names)}
             # A standalone manager may also read a full broker store. Never
             # downgrade a partially surviving broker schema to manager-only.
             full = profile == 'broker' or bool(set(tables) & (BROKER_TABLES.keys() - MANAGER_TABLES.keys()))
@@ -51,6 +51,11 @@ def validate_existing(path, profile):
 def open_store(path, *, profile='manager'):
     if profile not in {'manager', 'broker'}:
         raise ValueError('Unknown MCP store profile.')
+    # A missing main file does not establish a new data scope when any SQLite
+    # crash evidence survives, including empty or dangling sidecar paths.
+    if not os.path.lexists(path) and any(os.path.lexists(path.with_name(path.name + suffix))
+                                       for suffix in ('-wal', '-shm', '-journal')):
+        raise StoreUnavailable('Incomplete MCP store retains SQLite sidecars; preserve them. Nothing was initialized or replayed.')
     created = False
     try:
         # Exclusive creation distinguishes intentional new state from any
