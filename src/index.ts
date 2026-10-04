@@ -1,4 +1,6 @@
 import {managedParticipant} from './managed-files.js';
+import {admissionAbortProof,admissionAbortReceipt,type AdmissionAbortProof} from './admission-abort.js';
+export type {AdmissionAbortBinding,AdmissionAbortProof,AdmissionAbortOwnerReceipt} from './admission-abort.js';
 import {retentionParticipant} from './retention.js';
 import {serviceIdentity,validateServiceRelease,type ServiceIdentity,type ServiceReleaseFields} from './service-lifecycle.js';
 export type {ServiceIdentity,ServiceReleaseFields} from './service-lifecycle.js';
@@ -51,15 +53,19 @@ export class MCPCapabilities {
  readonly quiescenceAccess=Object.fromEntries(['list','setup','readResult','result','viewStatus','authStatus'].map(name=>['smartTools.'+name,'read' as const]));
  private idleNotice?:ReturnType<typeof setTimeout>;
  private activeEffects=0;private gate?:{ownerId:string;context:QuiescenceContext};
+ private acquiring=0;private aborting=false;
  private broker:Options['broker']&{request?:(method:string,args:Json)=>Promise<any>};private sequence=0;private scopes=new Map<string,number>();private notification?:ReturnType<typeof setTimeout>;
  constructor(private options:Options){this.broker='request' in options.broker?options.broker:new BrokerConnection(options.broker,()=>this.changed(),()=>this.mayBeIdle());}
- private async effect<T>(work:()=>Promise<T>):Promise<T>{if(this.gate)throw Error('MCP owner intake is closed for quiescence; no new effect was admitted.');this.activeEffects++;try{return await work();}finally{this.activeEffects--;this.mayBeIdle();}}
+ private async effect<T>(work:()=>Promise<T>):Promise<T>{if(this.gate||this.aborting)throw Error('MCP owner intake is closed for quiescence; no new effect was admitted.');this.activeEffects++;try{return await work();}finally{this.activeEffects--;this.mayBeIdle();}}
  inspectQuiescence=async()=>({...await this.call('quiescence/inspect',{}),nodeEffects:this.activeEffects});
  quiescenceParticipant(ownerId='mcp'){
   if(!ownerId||ownerId.length>200)throw Error('Bounded MCP owner identity required');
-  const release=async(context:QuiescenceContext,outcome:'ready'|'unchanged'|'unknown',proof?:QuiescenceProof|{kind:'admission-refused'})=>{if(context.purpose==='service-stop'&&outcome!=='unknown'&&proof?.kind!=='admission-refused')validateServiceRelease(context,outcome,proof);const result=await this.call('quiescence/release',{ownerId,context,outcome,proof});if(result.released)this.gate=undefined;};
+  const release=async(context:QuiescenceContext,outcome:'ready'|'unchanged'|'unknown',proof?:QuiescenceProof|{kind:'admission-refused'})=>{if(this.aborting||this.acquiring)throw Error('MCP quiescence transition is still pending');if(context.purpose==='service-stop'&&outcome!=='unknown'&&proof?.kind!=='admission-refused')validateServiceRelease(context,outcome,proof);const result=await this.call('quiescence/release',{ownerId,context,outcome,proof});if(result.released)this.gate=undefined;};
   return managedParticipant(retentionParticipant({id:ownerId,serviceStop:{version:1 as const},acquire:async(context:Readonly<QuiescenceContext>):Promise<QuiescenceLease|null>=>{
+   if(this.aborting)throw Error('MCP admission abort is still pending');
    if(this.activeEffects)return null;
+   this.acquiring++;
+   try{
    if(this.gate&&(this.gate.ownerId!==ownerId||this.gate.context.fenceId!==context.fenceId))throw Error('Existing MCP gate requires reconciliation');
    const exact:QuiescenceContext=structuredClone(context);if(exact.purpose==='service-stop'){exact.serviceIdentity=serviceIdentity(exact.serviceIdentity);if(exact.serviceIdentity.instanceId!==exact.instanceId||exact.serviceIdentity.dataScope!==exact.dataScope)throw Error('Service identity differs from MCP context');}
    this.gate={ownerId,context:exact};
@@ -68,6 +74,26 @@ export class MCPCapabilities {
    if(result.held===false&&result.executed===false){this.gate=undefined;return null;}
    if(result.held!==true||result.ownerId!==ownerId||result.fenceId!==context.fenceId)throw Error('MCP held lease was not confirmed');
    return {ownerId,fenceId:context.fenceId,release:(outcome,proof)=>release(exact,outcome,proof)};
+   }finally{this.acquiring--;}
+  },abortAdmission:async(input:Readonly<QuiescenceContext>&{proof:AdmissionAbortProof})=>{
+   const proof=admissionAbortProof(input,input.proof);
+   if(this.acquiring||this.aborting)throw Error('MCP admission work is still pending; intake was not changed');
+   const exact:QuiescenceContext={fenceId:input.fenceId,commandId:input.commandId,purpose:input.purpose,instanceId:input.instanceId,dataScope:input.dataScope};
+   const passive=Boolean(this.activeEffects||(this.gate&&(this.gate.ownerId!==ownerId||(['fenceId','commandId','purpose','instanceId','dataScope'] as const).some(key=>this.gate!.context[key]!==exact[key]))));
+   if(passive){
+    const hello=await this.call('initialize',{});
+    if(hello.capabilities?.quiescence?.admissionAbort?.version!==1)throw Error('MCP owner lacks admission abort receipt support');
+    // The broker may observe a completed abort or settle an exact pre-effect
+    // unwind, but cannot clear intake while Node has unrelated work or a gate.
+    return admissionAbortReceipt(ownerId,exact,await this.call('quiescence/abortAdmission',{ownerId,context:exact,proof,passiveOnly:true}));
+   }
+   this.gate={ownerId,context:exact};this.aborting=true;
+   try{
+    const hello=await this.call('initialize',{});
+    if(hello.capabilities?.quiescence?.admissionAbort?.version!==1)throw Error('MCP owner lacks admission abort receipt support');
+    const result=admissionAbortReceipt(ownerId,exact,await this.call('quiescence/abortAdmission',{ownerId,context:exact,proof}));
+    this.gate=undefined;this.mayBeIdle();return result;
+   }finally{this.aborting=false;}
   },reconcileRelease:async(context:Readonly<QuiescenceContext>&{outcome:'ready'|'unchanged';proof:QuiescenceProof})=>{if(context.purpose==='service-stop')validateServiceRelease(context,context.outcome,context.proof);return release(context,context.outcome,context.proof);}},args=>this.call('quiescence.retention',args)),args=>this.call('quiescence.managedFiles',args),async()=>(await this.call('initialize',{})).capabilities?.quiescence?.managedFiles?.version===1);
  }
  private call(method:string,args:Json){return this.broker.request!(method,args);}
