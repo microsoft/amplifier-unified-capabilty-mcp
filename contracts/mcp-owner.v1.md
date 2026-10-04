@@ -42,6 +42,20 @@ the README; public resource descriptor semantics remain unchanged.
 | **MCP5 — Hold real lifetimes and exact recovery proof.** Intake remains held across uncertainty/replacement; active requests/callbacks/threads and unqualified connected peers refuse retirement; passive recovery remains readable. CB7, MA1–3/MA6. | A timed-out caller manufactures idle while work lives; restart clears a fence; changed release proof is accepted. | [Quiescence](../python/tests/test_quiescence.py), [real subprocess/HTTP lifetime](../python/tests/test_real_lifetime.py), [service stop](../python/tests/test_service_stop.py), Node quiescence/service-stop cases. |
 | **MCP6 — Reviewed preservation before migration or disposal.** Exact selected bytes, destination and resolved configuration bind review; collisions refuse; imported Apps are read-only. Held reference inspection preserves records and reports partial coverage. WS1, CS7, MA7–11. | Import overwrites identity or adopts credentials/grants; changed symlink passes review; opaque server dependencies are guessed safe for file disposal. | Legacy import/packed import cases, [retention](../python/tests/test_retention.py), [managed-file references](../python/tests/test_managed_files.py). |
 
+## Installed setup documentation
+
+MCP1/MCP3/MCP4 apply to `smartTools.setup`: one selected installed identity
+returns bounded source-exact author documentation and declared CLI guidance,
+with no code execution, connection, credential probing or ready-state claim.
+The exact retained Git descriptor and manifest must match installation metadata;
+worktree edits and current upstream branches cannot replace them. Missing or
+changed source refuses while retaining the original installation and receipts.
+Paging, immutable source/hash, UI/agent parity, held intake and cancelled read
+lifetimes are checked by [setup guidance tests](../python/tests/test_setup_guidance.py)
+and the real install/broker case in [Node broker tests](../test/broker.test.ts).
+Client rendering of instructions, actual prerequisites, each documented CLI,
+MCP accounts and live worker adoption require their own acceptance.
+
 ## Consumer obligations
 
 The embedding host authenticates the caller and trusted origin, supplies the

@@ -242,6 +242,7 @@ class Broker:
   if args.get('sessionId') not in (None,scope):raise ValueError('Session selector differs from trusted scope.')
   if operation in {'smartTools.open','smartTools.appCall','smartTools.context','smartTools.reconnectView','smartTools.viewStatus'}:self.scope(scope,session=True)
   if operation=='smartTools.list':return {'read':True,'result':self.list_page(scope,**args)}
+  if operation=='smartTools.setup':return {'read':True,'result':await self.manager.setup(args)}
   if operation in {'smartTools.readResult','smartTools.result','smartTools.viewStatus','smartTools.authStatus'}:
    if operation=='smartTools.authStatus':result=self.manager.oauth.status(args['id'])
    elif operation=='smartTools.viewStatus':result=self.status(self.view(scope,args['canvasId']))

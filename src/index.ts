@@ -42,13 +42,13 @@ export class BrokerConnection {
  request=async(method:string,args:Json):Promise<any>=>{await this.start();return this.send(method,args);};
  async close(){this.fail('MCP broker connection closed.');if(!this.child||this.child.exitCode!==null)return;this.child.stdin.end();await new Promise<void>(resolve=>{const timer=setTimeout(()=>{this.child?.kill();resolve();},3000);this.child!.once('exit',()=>{clearTimeout(timer);resolve();});});}
 }
-const NAMES=['list','catalog','inspect','install','installBatch','configure','reconnect','authStart','authStatus','accountAccept','authCancel','authForget','uninstall','discover','schemas','connect','disconnect','remove','call','readResult','result','resources','readResource','open','viewStatus','reconnectView','appCall','context'];
+const NAMES=['list','catalog','inspect','setup','install','installBatch','configure','reconnect','authStart','authStatus','accountAccept','authCancel','authForget','uninstall','discover','schemas','connect','disconnect','remove','call','readResult','result','resources','readResource','open','viewStatus','reconnectView','appCall','context'];
 const scopeOf=(value:string)=>value==='ahp-root://' || value==='host'?'host':value;
 function sessionOf(context:Context){return typeof context.session==='string'?context.session:context.session?.uri;}
 /** Presentation records are bounded, while documents/results remain in the scoped owner. */
 export class MCPCapabilities {
  readonly manifest={version:1,topics:{connectors:{uri:'amplifier-capability://mcp/connectors',version:1,watch:true}},actions:Object.fromEntries(NAMES.map(name=>['smartTools.'+name,{topic:'connectors',operation:'smartTools.'+name,method:'x-amplifier/capabilityAction'}]))};
- readonly quiescenceAccess=Object.fromEntries(['list','readResult','result','viewStatus','authStatus'].map(name=>['smartTools.'+name,'read' as const]));
+ readonly quiescenceAccess=Object.fromEntries(['list','setup','readResult','result','viewStatus','authStatus'].map(name=>['smartTools.'+name,'read' as const]));
  private idleNotice?:ReturnType<typeof setTimeout>;
  private activeEffects=0;private gate?:{ownerId:string;context:QuiescenceContext};
  private broker:Options['broker']&{request?:(method:string,args:Json)=>Promise<any>};private sequence=0;private scopes=new Map<string,number>();private notification?:ReturnType<typeof setTimeout>;

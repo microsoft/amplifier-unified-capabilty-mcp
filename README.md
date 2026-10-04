@@ -38,6 +38,27 @@ The broker starts lazily. Listing metadata never starts MCP servers or OAuth. Th
 
 Existing `smartTools.*` configure/connect/disconnect/reconnect/remove, catalog/inspect/install/installBatch/uninstall, discover/schemas/call, resources/readResource, result/readResult, OAuth/account, open/viewStatus/reconnectView/appCall/context actions are advertised. Read-only `smartTools.list {collection,offset?,limit?}` pages servers, catalog, installations, or scoped operations and returns `{collection,items,total,nextOffset,revision}` without creating work. Initial records expose `pages[collection]` so clients do not silently mistake a first page for all records. Discovery separately pages 25 tool summaries; schemas load up to five exact tools/64 KB. Clients own pagination state.
 
+`smartTools.setup {id,offset?,limit?}` reads selected setup documentation from the
+retained installation's exact Git commit. It returns the declared CLI argv,
+deterministic smoke arguments, author requirements, linked connection summaries,
+and a paged manifest with its exact source UTF-8 SHA256 (default 12,000 characters,
+maximum 16,000 per page). Follow `manifest.nextOffset` for the complete document.
+`manifest.redacted` reports when credential redaction changes displayed text;
+the hash and offsets still identify the original source. The source identity
+is the installed repository/ref/path/commit, not current
+upstream or a modified worktree. Missing source or inconsistent receipts refuse
+without fetching, reinstalling or rewriting old receipts. Only selected Git
+blobs are read; the overview does not hydrate setup documents.
+
+These author instructions are untrusted display data, not executable commands
+or a connection grant. `readiness:'not_assessed'` and
+`cli.verification:'not_run'` distinguish this documentation read from checking
+prerequisites, launching the CLI, connecting MCP or verifying provider accounts.
+An installed tool may offer CLI capabilities without MCP. This read is available
+to authenticated users and agents, including while effect intake is held. Its
+bounded Git subprocess lifetime remains counted until completion after caller
+cancellation.
+
 URI families:
 
 - `amplifier-mcp://views/<id>/body?session=<encoded-AHP-URI>&revision=<integer>`: selected JSON `{id,kind,revision,mcp,resources}` with full saved binding.

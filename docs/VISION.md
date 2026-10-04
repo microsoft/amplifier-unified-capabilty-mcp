@@ -12,6 +12,9 @@ records inherited promises, existing seams and acceptance gaps separately.
 
 - An authorized person or agent can discover and use the same advertised
   capability actions, with caller origin and saved grants enforced at dispatch.
+- Installed tools retain selected source-exact setup instructions. CLI capability,
+  installed package, prerequisites, connected MCP and confirmed accounts remain
+  distinct; reading author instructions never executes them.
 - Registrations and installation metadata are cheap to inspect. Connections,
   authorization, large results and App documents load only through explicit,
   bounded requests.
