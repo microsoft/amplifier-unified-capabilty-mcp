@@ -642,26 +642,33 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         return result
 
     async def catalog(self):
-        checkout, commit = await self._checkout(CATALOG_REPOSITORY)
+        checkout, commit = await self._checkout(CATALOG_REPOSITORY, "main")
         try:
-            rows = []
-            for source_path in sorted((checkout / "tools").glob("*/source.json"))[:200]:
-                if not source_path.resolve().is_relative_to(checkout.resolve()) or source_path.stat().st_size > 32_000:
-                    continue
+            from .catalog_snapshots import entry
+            sources = []
+            for source_path in (checkout / 'tools').glob('*/source.json'):
+                sources.append(source_path)
+                if len(sources) == 201:break
+            truncated = len(sources) > 200
+            rows, problems = [], []
+            for source_path in sorted(sources[:200]):
                 try:
-                    source = json.loads(source_path.read_text())
-                    repository = _repository(source["repository"])
-                    manifest_path = source_path.parent / "SMART_TOOL.md"
-                    if not manifest_path.resolve().is_relative_to(checkout.resolve()):
-                        continue
-                    manifest = _manifest(manifest_path.read_text())
-                    rows.append({"id": source_path.parent.name, "repository": repository, "ref": source.get("ref", "HEAD"), "path": _relative(source.get("path")), "name": manifest["name"], "description": manifest["description"], "version": manifest["version"], "manifest": manifest, "status": "listed"})
-                except (KeyError, OSError, ValueError, yaml.YAMLError):
-                    continue
-            if not rows:
-                raise ValueError("The catalog did not contain any valid Smart Tool entries.")
-            await self._change(lambda state: state.update(catalog=rows, catalogCommit=commit, catalogCheckedAt=time.time()))
-            return {"items": rows, "commit": commit}
+                    rows.append(entry(source_path, checkout))
+                except (KeyError, OSError, UnicodeError, ValueError, yaml.YAMLError):
+                    # A bad snapshot must not disappear silently or present
+                    # unverified author requirements as a valid catalog item.
+                    problems.append({'id':source_path.parent.name,'code':'snapshot_unverified',
+                                     'message':'This catalog snapshot could not be verified. Inspect its source pointer and refresh provenance.'})
+            if rows:
+                await self._change(lambda state: state.update(catalog=rows, catalogCommit=commit, catalogCheckedAt=time.time()))
+            complete = bool(rows) and not problems and not truncated
+            result = {'items':rows,'commit':commit,'problems':problems,'complete':complete,'truncated':truncated}
+            if not complete:
+                message = f'{len(rows)} verified catalog entries; {len(problems)} snapshots need review.'
+                if truncated:message += ' More entries exceed this catalog limit.'
+                if not rows:message += ' Previous inventory was retained.'
+                result.update(isError=True, content=[{'type':'text','text':message}])
+            return result
         finally:
             shutil.rmtree(checkout, ignore_errors=True)
 

@@ -264,7 +264,7 @@ class Broker:
   if operation in {'smartTools.connect','smartTools.reconnect','smartTools.authStart'} and args.get('id') not in self.manager.connections and len(self.manager.connections)>=8:raise ValueError('Disconnect an unused MCP connection before opening another.')
   receipt={'id':command_id,'action':operation,'status':'running','createdAt':time.time(),'updatedAt':time.time(),'target':{k:v for k,v in args.items() if k in ('id','canvasId','name','operationId')}}
   self.db.execute('INSERT INTO commands VALUES (?,?,?,?)',(command_id,scope,key,json.dumps(receipt)));self.db.commit();self.active+=1
-  descriptor=None
+  descriptor=None;native_receipt=False
   try:
    if operation=='smartTools.open':descriptor=await self.open_view(scope,args);result={'canvasId':descriptor['id'],'revision':descriptor['providerRevision'],'resourceUri':descriptor['resourceUri'],'descriptor':descriptor}
    elif operation=='smartTools.reconnectView':result=await self.reconnect(scope,args);descriptor=result.get('descriptor')
@@ -281,13 +281,14 @@ class Broker:
      b=view['mcp'];native_args={'id':b['serverId'],'name':args['name'],'arguments':args['arguments'],'sessionId':scope,'_configuration':b['configuration'],'_allowedTools':b['allowedTools'],'catalogRevision':b['catalogRevision'],'_binding_guard':lambda:self.bound(scope,args['canvasId'],args['expectedRevision'])}
     elif operation=='smartTools.call':native_args['sessionId']=scope
     await self.manager.command('smartTools.call' if operation=='smartTools.appCall' else operation,native_args,command_id,origin=('agent' if origin=='agent' else 'app') if operation=='smartTools.appCall' else origin)
-    receipt=self.manager.operation(command_id)
+    receipt=self.manager.operation(command_id);native_receipt=True
     result=receipt.get('result')
    if receipt['status']=='running':receipt.update(status='completed',outcome='confirmed',result=result)
   except asyncio.CancelledError:
    receipt.update(status='interrupted',outcome='unknown',error='Broker request interrupted; work was not replayed.');raise
   except Exception as exc:receipt.update(status='failed',outcome='not_sent',error=self.manager._redact(str(exc))[:2000])
   finally:
-   receipt['updatedAt']=time.time();self.db.execute('UPDATE commands SET value=? WHERE id=?',(json.dumps(self.manager._overview(receipt)),command_id));self.db.commit();self.active-=1
+   if not native_receipt:receipt['updatedAt']=time.time()
+   self.db.execute('UPDATE commands SET value=? WHERE id=?',(json.dumps(self.manager._overview(receipt)),command_id));self.db.commit();self.active-=1
   return {'receipt':receipt,**({'descriptor':descriptor} if descriptor else {})}
  async def close(self):await self.manager.close();self.db.close()
