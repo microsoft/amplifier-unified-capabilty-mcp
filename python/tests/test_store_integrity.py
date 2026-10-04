@@ -170,3 +170,24 @@ async def test_existing_schema_admission_reads_only_fixed_bounded_metadata(tmp_p
     assert 'sqlite_master WHERE name IN' in statements[0]
     assert 'substr(sql,1,4097)' in statements[0]
     assert all('quick_check' not in sql and 'integrity_check' not in sql and 'SELECT value' not in sql for sql in statements)
+
+@pytest.mark.parametrize('length,tail', [(4096,''), (4097,''), (5100,' WITHOUT ROWID')])
+async def test_bounded_ddl_refuses_sentinel_before_normalizing_truncated_whitespace(tmp_path, length, tail):
+    from amplifier_unified_mcp.store import validate_existing
+    path, _ = await saved(tmp_path)
+    sql = BROKER_TABLES['commands']
+    with sqlite3.connect(path) as db:
+        rows = db.execute('SELECT * FROM commands').fetchall()
+        db.execute('DROP TABLE commands')
+        statement = sql + ' ' * (length - len(sql)) + tail if tail else sql[:-1] + ' ' * (length - len(sql)) + ')'
+        db.execute(statement)
+        db.executemany('INSERT INTO commands VALUES(?,?,?,?)', rows)
+        assert len(db.execute("SELECT sql FROM sqlite_master WHERE name='commands'").fetchone()[0]) == length + len(tail)
+    before = fingerprint(path)
+    if length < 4097:
+        # Complete declared DDL with harmless formatting remains valid.
+        validate_existing(path, 'broker')
+    else:
+        with pytest.raises(StoreUnavailable, match='commands'): validate_existing(path, 'broker')
+        with pytest.raises(StoreUnavailable, match='commands'): Broker(tmp_path)
+    assert fingerprint(path) == before

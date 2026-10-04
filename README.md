@@ -108,7 +108,9 @@ Command scope/fingerprint is durable before execution. Tool dispatch marks and c
 Startup validates an existing `smart-tools/broker.sqlite3` through a read-only
 connection before setting journal mode, creating indexes, or normalizing receipts.
 Validation reads only the eight required schema entries with bounded DDL text;
-it does not scan database rows or run whole-database integrity checks.
+a DDL value at the 4,097-character sentinel is refused before normalization,
+so a truncated declared prefix cannot hide an incompatible suffix.
+It does not scan database rows or run whole-database integrity checks.
 All eight broker tables retain authoritative configuration, receipt, result,
 view, import, or fence data. Missing or incompatible tables and unreadable,
 empty databases and unreadable schemas refuse owner startup; the database is

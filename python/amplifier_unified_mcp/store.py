@@ -42,7 +42,8 @@ def validate_existing(path, profile):
             expected = BROKER_TABLES if full else MANAGER_TABLES
             for name, sql in expected.items():
                 actual = tables.get(name)
-                if actual is None or actual[0] != 'table' or normalized(actual[1]) != normalized(sql):
+                if (actual is None or actual[0] != 'table' or not isinstance(actual[1], str)
+                        or len(actual[1]) >= 4097 or normalized(actual[1]) != normalized(sql)):
                     raise StoreUnavailable('MCP store authoritative schema is missing or incompatible: ' + name + '.')
     except (sqlite3.Error, OSError) as exc:
         raise StoreUnavailable('MCP store is unavailable; preserve its database and receipts. Nothing was replayed.') from exc

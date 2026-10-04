@@ -61,6 +61,7 @@ MCP accounts and live worker adoption require their own acceptance.
 MCP3/MCP5/MCP6 also apply before startup advertises owner support. Existing
 SQLite authority must match the declared complete manager or broker profile
 through fixed bounded schema metadata reads, without scanning all data rows;
+DDL reaching the selected sentinel is refused before normalization;
 missing or incompatible authoritative tables refuse before schema creation,
 journal configuration, or restart normalization. Missing receipt tables cannot
 be recreated as empty history, and absent fence state cannot establish open
