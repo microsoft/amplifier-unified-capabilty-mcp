@@ -132,15 +132,11 @@ from .smart_tool_installation import InstallProblem, python_project
 
 
 class SmartToolsManager(Lifecycle, ManagedUpdates):
-    def __init__(self, data_dir, *, server_config=None):
-        import sqlite3
+    def __init__(self, data_dir, *, server_config=None, _store_profile="manager"):
+        from .store import open_store
         self.root = Path(data_dir).resolve() / "smart-tools"
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.db = sqlite3.connect(self.root / "broker.sqlite3")
-        os.chmod(self.root / "broker.sqlite3", 0o600)
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA synchronous=FULL")
-        self.db.executescript("CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS blobs (id TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS smart_tool_operations (id TEXT PRIMARY KEY,value TEXT NOT NULL);")
+        self.db = open_store(self.root / "broker.sqlite3", profile=_store_profile)
         self.db.executescript("CREATE INDEX IF NOT EXISTS operation_status ON smart_tool_operations(json_extract(value,'$.status')); CREATE INDEX IF NOT EXISTS operation_updated ON smart_tool_operations(json_extract(value,'$.updatedAt') DESC);")
         self.server_config = server_config or {}
         self.lock = asyncio.Lock()

@@ -62,3 +62,19 @@ test('real Python inspect/install receipts keep package descriptors inert throug
   assert.equal(await readFile(path.join(dir,'data/smart-tools/fixture-checkouts'),'utf8'),'2');
  }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
 });
+
+test('damaged authoritative receipt/configuration stores refuse actual broker startup without re-admission',{skip:!existsSync(python)},async t=>{
+ const {execFileSync}=await import('node:child_process');
+ for(const missing of [['records'],['commands'],['smart_tool_operations'],['commands','smart_tool_operations']])await t.test(missing.join('+'),async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'unified-mcp-damaged-'));const config=path.join(dir,'broker.json');await writeFile(config,JSON.stringify({dataDir:path.join(dir,'data')}));
+  const script="import asyncio,json,sqlite3,sys;from pathlib import Path;from amplifier_unified_mcp.broker import Broker\nasync def seed():\n b=Broker(Path(sys.argv[1])/'data');r=await b.action('host','smartTools.configure',{'name':'Inert metadata','command':'/usr/bin/false'},'same-owned-command');assert r['receipt']['status']=='completed';await b.close()\nasyncio.run(seed())\np=Path(sys.argv[1])/'data/smart-tools/broker.sqlite3';db=sqlite3.connect(p)\nfor table in json.loads(sys.argv[2]):db.execute('DROP TABLE '+table)\ndb.commit();db.close()";
+  execFileSync(python,['-B','-c',script,dir,JSON.stringify(missing)]);
+  const database=path.join(dir,'data/smart-tools/broker.sqlite3');const original=await readFile(database);
+  const owner=createMCPCapabilities({broker:{command:python,args:['-B','-m','amplifier_unified_mcp.server','--config',config],cwd:root},inspectSession:async()=>({}),registerExternal:async()=>{throw Error('No resource registration expected');}});
+  try{
+   await assert.rejects(owner.actionSchemas(),/broker exited|unavailable/i);
+   await assert.rejects(owner.action({version:1,topic:'connectors',operation:'smartTools.configure',channel:'ahp-root://',commandId:'same-owned-command',args:{name:'Inert metadata',command:'/usr/bin/false'}},{clientId:'test'}),/broker|closed|unavailable/i);
+   assert.deepEqual(await readFile(database),original);
+  }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
+ });
+});

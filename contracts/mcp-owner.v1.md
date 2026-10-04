@@ -56,6 +56,22 @@ and the real install/broker case in [Node broker tests](../test/broker.test.ts).
 Client rendering of instructions, actual prerequisites, each documented CLI,
 MCP accounts and live worker adoption require their own acceptance.
 
+## Existing broker store admission
+
+MCP3/MCP5/MCP6 also apply before startup advertises owner support. Existing
+SQLite authority must match the declared complete manager or broker profile;
+missing or incompatible authoritative tables refuse before schema creation,
+journal configuration, or restart normalization. Missing receipt tables cannot
+be recreated as empty history, and absent fence state cannot establish open
+intake. Only absent new stores are initialized; intact stores may rebuild
+indexes. The standalone profile remains valid for its own manager reader, not
+an implicit broker schema migration. [Store integrity checks](../python/tests/test_store_integrity.py)
+cover each authoritative table, both receipt tables, unknown guards, incompatible
+schema, exact duplicate recovery, and derived index rebuilding. Entire store
+replacement/deletion and valid row deletion remain outside this structural
+admission proof. Client refusal and installed worker adoption require their own
+receipts; source checks alone do not qualify them.
+
 ## Consumer obligations
 
 The embedding host authenticates the caller and trusted origin, supplies the
