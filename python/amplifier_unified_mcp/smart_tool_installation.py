@@ -1,4 +1,6 @@
 """Inert package inspection and safe diagnostics for explicit installations."""
+import os
+import shutil
 from pathlib import Path
 import tomllib
 
@@ -43,3 +45,50 @@ def python_project(root: Path):
         return {"pythonSupported": True, "pythonRequires": requirement}
     except (OSError, UnicodeError, ValueError, InvalidSpecifier) as exc:
         raise InstallProblem("invalid_package", "This tool's package needs an update before it can be installed.", str(exc)) from exc
+
+
+class ManagedInstaller:
+    """Trusted launcher configuration; never tool args or catalog metadata.
+
+    Availability checks inspect the selected executable only. They do not run it,
+    inspect credentials, download software or claim package/renderer readiness.
+    """
+    unavailable_message = 'Smart Tool installation is unavailable because its installer executable cannot be found or used. Ask your administrator to configure the installer location.'
+
+    def __init__(self, configuration=None):
+        if configuration is not None:
+            if not isinstance(configuration, dict) or set(configuration) != {'executable'}:
+                raise ValueError('Installer configuration requires only an absolute executable path.')
+            value = configuration['executable']
+            if (not isinstance(value, str) or not 1 <= len(value) <= 4096
+                    or any(ord(c) < 32 for c in value) or not Path(value).is_absolute()):
+                raise ValueError('Installer executable must be an absolute path of at most 4096 characters.')
+            self.executable = value
+        else:
+            self.executable = None
+
+    def resolve(self):
+        # Explicit configuration is authoritative: never silently use another uv.
+        if self.executable is not None:
+            path = Path(self.executable)
+            try:
+                return self.executable if path.is_file() and os.access(path, os.X_OK) else None
+            except OSError:
+                return None
+        return shutil.which('uv')
+
+    def readiness(self):
+        available = self.resolve() is not None
+        return {'version': 1, 'status': 'available' if available else 'unavailable',
+                'source': 'configured' if self.executable is not None else 'path',
+                'code': None if available else 'installer_unavailable',
+                'message': ('The installer executable is available. Tool prerequisites and installation have not been checked.' if available else
+                            self.unavailable_message)}
+
+    def require(self):
+        executable = self.resolve()
+        if executable is None:
+            details = ('The configured uv executable is missing or not executable; ambient PATH was not used.' if self.executable is not None else
+                       'uv is not visible on the broker PATH. Configure an absolute installer executable in the broker launcher.')
+            raise InstallProblem('installer_unavailable', self.unavailable_message, details)
+        return executable

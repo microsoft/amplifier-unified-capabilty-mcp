@@ -36,6 +36,30 @@ The broker starts lazily. Listing metadata never starts MCP servers or OAuth. Th
 
 ## Actions and resources
 
+### Managed installer availability
+
+The trusted broker launcher may set `installer: {"executable": "/absolute/reviewed/uv"}`
+([launcher schema](schemas/broker-config.v1.json)). This is deployment configuration,
+not a tool argument or catalog field. The broker uses that executable directly and
+never falls back to another installer on PATH. Without the setting, existing PATH
+lookup remains supported. No login environment or credentials need to be copied.
+
+`smartTools.installerReadiness` is a bounded read available to UI and agent callers,
+including while maintenance intake is held. It returns version 1, executable
+availability, source (`configured` or `path`), and an actionable message without
+running the executable, downloading software, or creating a command receipt.
+Availability is not a version, package, renderer, account or tool-readiness claim.
+Installation checks the same executable before source checkout or install staging;
+missing/non-executable configuration produces `installer_unavailable` and explains
+installer location, rather than asking for a permission grant.
+
+The approved executable must implement uv's `venv` and `pip install` interfaces.
+Availability alone does not authenticate its bytes or remove replacement races;
+distribution owns executable provenance and activation. Declared Python constraints
+and package-subdirectory checks remain unchanged. A fresh request is required to
+compare a new configuration with an old failed installation; old receipts are not
+rewritten or replayed.
+
 ### Future-source pre-retirement admission abort
 
 The trusted host participant exposes `abortAdmission(contextWithProof)` and forwards

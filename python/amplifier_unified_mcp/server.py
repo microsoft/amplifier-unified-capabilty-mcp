@@ -5,7 +5,7 @@ from filelock import FileLock
 from .broker import Broker,ACTIONS
 MAX_FRAME=4_000_000
 async def run(config,output):
- broker=Broker(config['dataDir'],server_config=config.get('server',{}));pending=set()
+ broker=Broker(config['dataDir'],server_config=config.get('server',{}),installer_config=config.get('installer'));pending=set()
  def changed(value):
   output.write(json.dumps({'jsonrpc':'2.0','method':'broker/changed','params':value})+'\n');output.flush()
  broker.manager.on_change=changed
@@ -17,7 +17,7 @@ async def run(config,output):
   try:
    if row.get('jsonrpc')!='2.0' or not isinstance(row.get('params',{}),dict):raise ValueError('Invalid request.')
    p=row.get('params',{});method=row['method']
-   if method=='initialize':result={'protocolVersion':1,'capabilities':{'actions':list(ACTIONS),'resources':True,'oauthCallback':True,'quiescence':{'version':1,'held':True,'retentionHide':{'version':1},'managedFiles':{'version':1,'preservesCanonical':True},'serviceStop':{'version':1},'admissionAbort':{'version':1}}}}
+   if method=='initialize':result={'protocolVersion':1,'capabilities':{'actions':list(ACTIONS),'resources':True,'installerReadiness':{'version':1},'oauthCallback':True,'quiescence':{'version':1,'held':True,'retentionHide':{'version':1},'managedFiles':{'version':1,'preservesCanonical':True},'serviceStop':{'version':1},'admissionAbort':{'version':1}}}}
    elif method=='quiescence/acquire':result=broker.quiescence.acquire(p['ownerId'],p['context'])
    elif method=='quiescence/abortAdmission':result=broker.quiescence.abort_admission(p['ownerId'],p['context'],p['proof'],p.get('passiveOnly') is True)
    elif method=='quiescence.retention':result=broker.retention_references(p)

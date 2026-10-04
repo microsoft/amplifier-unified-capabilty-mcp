@@ -19,8 +19,8 @@ ACTIONS['smartTools.appCall'][1]['required']=['canvasId','expectedRevision','nam
 ACTIONS['smartTools.context'][1]['required']=['canvasId','expectedRevision','context']
 
 class Broker:
- def __init__(self,data_dir,*,server_config=None):
-  self.manager=SmartToolsManager(data_dir,server_config=server_config,_store_profile="broker")
+ def __init__(self,data_dir,*,server_config=None,installer_config=None):
+  self.manager=SmartToolsManager(data_dir,server_config=server_config,installer_config=installer_config,_store_profile="broker")
   self.db=self.manager.db
   self.db.execute('CREATE INDEX IF NOT EXISTS scoped_views ON views(scope,id,revision)')
   self.db.executescript("CREATE INDEX IF NOT EXISTS command_scope ON commands(scope); CREATE INDEX IF NOT EXISTS command_status ON commands(json_extract(value,'$.status'));")
@@ -242,6 +242,7 @@ class Broker:
   if args.get('sessionId') not in (None,scope):raise ValueError('Session selector differs from trusted scope.')
   if operation in {'smartTools.open','smartTools.appCall','smartTools.context','smartTools.reconnectView','smartTools.viewStatus'}:self.scope(scope,session=True)
   if operation=='smartTools.list':return {'read':True,'result':self.list_page(scope,**args)}
+  if operation=='smartTools.installerReadiness':return {'read':True,'result':self.manager.installer.readiness()}
   if operation=='smartTools.setup':return {'read':True,'result':await self.manager.setup(args)}
   if operation in {'smartTools.readResult','smartTools.result','smartTools.viewStatus','smartTools.authStatus'}:
    if operation=='smartTools.authStatus':result=self.manager.oauth.status(args['id'])

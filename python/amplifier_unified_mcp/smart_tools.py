@@ -128,12 +128,13 @@ from .smart_tool_lifecycle import Lifecycle
 
 
 from .smart_tool_updates import ManagedUpdates
-from .smart_tool_installation import InstallProblem, python_project
+from .smart_tool_installation import InstallProblem, ManagedInstaller, python_project
 
 
 class SmartToolsManager(Lifecycle, ManagedUpdates):
-    def __init__(self, data_dir, *, server_config=None, _store_profile="manager"):
+    def __init__(self, data_dir, *, server_config=None, installer_config=None, _store_profile="manager"):
         from .store import open_store
+        self.installer = ManagedInstaller(installer_config)
         self.root = Path(data_dir).resolve() / "smart-tools"
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.db = open_store(self.root / "broker.sqlite3", profile=_store_profile)
@@ -396,6 +397,8 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         if self.closed:
             raise ValueError("Smart Tools are shutting down.")
         name = action.removeprefix("smartTools.")
+        if name == "installerReadiness":
+            return self.installer.readiness()
         if name == "authStart":
             return await self.oauth.start(args["id"], args.get("redirectOrigin"))
         if name == "authStatus":
@@ -674,6 +677,8 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         if not isinstance(extras, list) or len(extras) > 20 or any(not isinstance(extra, str) or not EXTRA_NAME.fullmatch(extra) for extra in extras):
             raise ValueError("Package extras must be simple names such as mcp.")
         async with self.install_lock:
+            # Fail before checkout, network access or installation staging.
+            uv = self.installer.require()
             try:
                 checkout, commit = await self._checkout(repository, args.get("ref"))
             except (OSError, ValueError, TimeoutError) as exc:
@@ -694,9 +699,6 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
                 source = install_dir / "source"
                 shutil.move(str(checkout), source)
                 python = install_dir / "venv" / "bin" / "python"
-                uv = shutil.which("uv")
-                if not uv:
-                    raise InstallProblem("installer_unavailable", "The tool installer isn't available. Ask the person who manages Amplifier Unified to enable it.", "uv is required to install Smart Tools.")
                 environment = _install_environment()
                 # Explicit constraints avoid the broker's working directory,
                 # .python-version or an older Python on PATH choosing the runtime.

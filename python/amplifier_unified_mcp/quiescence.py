@@ -4,7 +4,7 @@ import json
 import hashlib
 from .service_lifecycle import service_identity, service_proof
 
-READ_ACTIONS = frozenset({'smartTools.list', 'smartTools.setup', 'smartTools.readResult', 'smartTools.result', 'smartTools.viewStatus', 'smartTools.authStatus'})
+READ_ACTIONS = frozenset({'smartTools.installerReadiness', 'smartTools.list', 'smartTools.setup', 'smartTools.readResult', 'smartTools.result', 'smartTools.viewStatus', 'smartTools.authStatus'})
 
 
 def token(value, name):
