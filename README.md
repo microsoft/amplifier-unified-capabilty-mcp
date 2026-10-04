@@ -51,6 +51,33 @@ All view reads verify session ownership. Immutable old revisions keep source/res
 
 Catalog descriptors contain only ID, scope, title, providerRevision, resource URIs, and compact tool/server IDs (<8 KiB). HTML/results/arguments/grants/account bindings stay here. registerExternal records references only. context is bounded untrusted display data intentionally shared with agents, not an instruction or automatic model turn.
 
+### Smart Tool installation prerequisites and diagnostics
+
+Inspection reads bounded static `pyproject.toml` metadata without running the
+package. Its additive `pythonRequires` field is the declared Python version
+constraint or `null` when unknown. A workspace-only folder is rejected with a
+package-subdirectory explanation. Explicit installation gives the constraint to
+`uv venv --python`; uv selects or downloads a compatible isolated interpreter.
+Without a declared constraint it uses the broker's interpreter. It does not
+change the host Python or inherit a parent project's runtime selection. Package
+builds still validate transitive dependencies; static inspection is not proof
+that every operating system, external command or account prerequisite is met.
+
+Failed installations expose optional `problem: {code, message, details}` on the
+operation or individual batch item. `message` is suitable for the normal UI;
+`details` is redacted and bounded to 1,500 characters for expandable diagnostics.
+Codes are `invalid_package`, `installer_unavailable`, `source_unavailable`,
+`runtime_unavailable`, and `package_install_failed`. Existing `error` remains for
+older consumers. Mixed-version clients should use a generic failure summary and
+show the legacy error only on request. An explicit batch retry selects unfinished
+items only, clears stale diagnostics and preserves successful installations and
+the original receipt. Interrupted work remains interrupted and is never replayed.
+
+Installing a package does not connect an MCP server, supply provider credentials,
+or establish readiness. A CLI descriptor is not an MCP launch command. The client
+uses documented setup and observed connection/account/tool evidence; absent
+setup support remains explicit.
+
 The renderer must use an opaque iframe without allow-same-origin, validate source-window/current-view bindings, deny camera/microphone/location/clipboard, and prepend CSP before tool bytes: `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; frame-src data: blob:; object-src 'none'; form-action 'none'; base-uri 'none'`. requestedCsp/requestedPermissions are requests, not grants. Original stored source remains unchanged.
 
 ## Durability, authorization, and cost

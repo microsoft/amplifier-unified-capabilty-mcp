@@ -55,6 +55,18 @@ render MCP HTML in the README's opaque sandbox, and make unsupported/busy/unknow
 outcomes visible. Discovery pages and views confer no new grant. They distinguish
 saved configuration, connected transport, confirmed account and completed effect.
 
+For explicit Smart Tool installation, bounded static project metadata supplies
+the Python constraint; runtime selection must satisfy it independently of the
+host's default Python. Failed preparation must preserve prior installations and
+receipts. The additive `pythonRequires` and `problem` read fields are described
+in the README; clients use the safe message and keep selected diagnostics
+separate. Neither those fields nor successful installation imply an MCP adapter
+or usable account. These refine MCP1/3/4 and CX's guided user outcomes without
+changing AHP/ACP/MCP wire semantics. Falsifiers include selecting Python 3.12 for
+`>=3.13`, executing metadata during inspection, exposing full raw errors as the
+normal UI, or retrying successful items. The isolated cases are in
+[installation runtime tests](../python/tests/test_installation_runtime.py).
+
 The operations owner rechecks qualified observation source/schema/account/target
 bindings and never treats a tool's read-only hint as qualification. The supervisor
 holds every configured participant and supplies verified exact release evidence;

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sys
 import time
 from urllib.parse import urlsplit
 import uuid
@@ -123,6 +124,7 @@ from .smart_tool_lifecycle import Lifecycle
 
 
 from .smart_tool_updates import ManagedUpdates
+from .smart_tool_installation import InstallProblem, python_project
 
 
 class SmartToolsManager(Lifecycle, ManagedUpdates):
@@ -337,6 +339,8 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
             raise
         except Exception as exc:
             from .smart_tool_lifecycle import ConnectionUnavailable
+            if isinstance(exc, InstallProblem):
+                operation['problem'] = exc.record(self._redact)
             if isinstance(exc, ConnectionUnavailable):
                 operation.update(failureReason='connection_unavailable', requestState='not_sent')
             error = self._redact(str(exc))[:1500]
@@ -352,7 +356,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
             previous=self.operation(args['retryOperationId'])
             if not previous or previous.get('action')!='smartTools.installBatch' or previous.get('status') in {'running','queued'}:
                 raise ValueError('Choose a finished or interrupted installation batch.')
-            items=[{**row,'status':'queued','error':None} for row in previous.get('items',[]) if row.get('status')!='completed']
+            items=[{**row,'status':'queued','error':None,'problem':None} for row in previous.get('items',[]) if row.get('status')!='completed']
             if not items:raise ValueError('This batch has no unfinished installations.')
         else:
             ids=args.get('ids',[])
@@ -382,6 +386,8 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
                     raise
                 except Exception as exc:
                     item.update(status='failed',error=self._redact(str(exc))[:500])
+                    if isinstance(exc, InstallProblem):
+                        item['problem'] = exc.record(self._redact)
                 await self._change(lambda _:progress(),persist_metadata=False)
             failed=sum(row['status']!='completed' for row in items)
             return {'completed':len(items)-failed,'failed':failed,'isError':bool(failed),'content':[{'type':'text','text':f"{len(items)-failed} installed; {failed} need attention."}]}
@@ -546,7 +552,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         if not manifest_path.is_file() or manifest_path.stat().st_size > 256_000:
             raise ValueError("The declared Smart Tool manifest is missing or too large.")
         manifest = _manifest(manifest_path.read_text())
-        return {"repository": repository, "ref": args.get("ref") or "HEAD", "path": args.get("path") or ".", "commit": commit, "name": manifest["name"], "description": manifest["description"], "manifest": manifest, "descriptor": descriptor, "pythonSupported": (root / "pyproject.toml").is_file(), "status": "inspected"}
+        return {"repository": repository, "ref": args.get("ref") or "HEAD", "path": args.get("path") or ".", "commit": commit, "name": manifest["name"], "description": manifest["description"], "manifest": manifest, "descriptor": descriptor, **python_project(root), "status": "inspected"}
 
     async def inspect(self, args):
         repository = _repository(args["repository"])
@@ -586,12 +592,15 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         if not isinstance(extras, list) or len(extras) > 20 or any(not isinstance(extra, str) or not EXTRA_NAME.fullmatch(extra) for extra in extras):
             raise ValueError("Package extras must be simple names such as mcp.")
         async with self.install_lock:
-            checkout, commit = await self._checkout(repository, args.get("ref"))
+            try:
+                checkout, commit = await self._checkout(repository, args.get("ref"))
+            except (OSError, ValueError, TimeoutError) as exc:
+                raise InstallProblem("source_unavailable", "Couldn't download this tool. Try again, or open the details for help.", str(exc)) from exc
             install_dir = None
             try:
                 info = self._inspect_checkout(checkout, repository, commit, args)
                 if not info["pythonSupported"]:
-                    raise ValueError("Automatic installation currently supports Python projects with pyproject.toml. Follow this tool's install instructions, then register its MCP server command.")
+                    raise InstallProblem("invalid_package", "This tool needs manual installation. Open its setup instructions for help.", "Automatic installation supports Python packages with pyproject.toml.")
                 identity = hashlib.sha256(json.dumps([repository, commit, info["path"], sorted(extras)]).encode()).hexdigest()[:24]
                 install_dir = self.root / "installs" / identity
                 previous = next((row for row in self.state["installations"] if row["id"] == identity), None)
@@ -605,11 +614,21 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
                 python = install_dir / "venv" / "bin" / "python"
                 uv = shutil.which("uv")
                 if not uv:
-                    raise ValueError("uv is required to install Smart Tools.")
+                    raise InstallProblem("installer_unavailable", "The tool installer isn't available. Ask the person who manages Amplifier Unified to enable it.", "uv is required to install Smart Tools.")
                 environment = _install_environment()
-                await self._run([uv, "venv", str(install_dir / "venv")], timeout=120, env=environment)
+                # Explicit constraints avoid the broker's working directory,
+                # .python-version or an older Python on PATH choosing the runtime.
+                # uv can obtain a compatible runtime without changing host Python.
+                request = info["pythonRequires"] or sys.executable
+                try:
+                    await self._run([uv, "venv", "--no-project", "--no-config", "--python", request, str(install_dir / "venv")], timeout=300, env=environment, cwd=install_dir)
+                except (OSError, ValueError, TimeoutError) as exc:
+                    raise InstallProblem("runtime_unavailable", "Couldn't prepare the software this tool needs. Try again, or open the details for help.", str(exc)) from exc
                 package = str(_inside(source, info["path"])) + ("[" + ",".join(extras) + "]" if extras else "")
-                await self._run([uv, "pip", "install", "--python", str(python), package], timeout=600, env=environment)
+                try:
+                    await self._run([uv, "pip", "install", "--no-config", "--python", str(python), package], timeout=600, env=environment, cwd=install_dir)
+                except (OSError, ValueError, TimeoutError) as exc:
+                    raise InstallProblem("package_install_failed", "This tool couldn't be installed. Open the details for help or share them with its author.", str(exc)) from exc
                 row = {**info, "id": identity, "status": "installed", "extras": extras, "installedAt": time.time(), "binDir": str(python.parent), "python": str(python), "sourceDir": str(_inside(source, info["path"])), "nextStep": "Register the tool's documented MCP executable from this bin folder. Installation does not start a server or configure model credentials."}
                 if args.get('_update_from'): row['stagedFrom'] = args['_update_from']
                 await self._change(lambda state: state.update(installations=[item for item in state["installations"] if item["id"] != identity] + [row]))
