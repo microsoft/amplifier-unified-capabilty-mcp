@@ -333,3 +333,25 @@ receipts remain passive/recoverable without resolving or adopting a new director
 retained sources, receipts and registrations are not rewritten by this correction.
 The successor's installed import checks are separate from the sealed predecessor's
 full installed/public-host evidence; see correctiveQualification in QUALIFICATION.json.
+
+## Catalog snapshot provenance
+
+Catalog refresh reads the authoritative catalog's `main` branch. A listed entry
+requires credential-free source pointers and snapshot provenance that agrees
+exactly on repository, default `main` ref, and default `.` package path. Exact
+commit, safe package-scoped original manifest path and timezone-aware successful
+refresh timestamp are required; duplicate JSON keys, symlinks and oversized or
+missing metadata refuse. `snapshot.status:'verified'` means pointer-bound catalog
+metadata, not an independent upstream-byte or runtime qualification. The
+`snapshot.lastSuccess` timestamp is not proof that upstream remains current;
+`snapshot.freshness:'not_checked_against_upstream'` keeps that limit explicit.
+
+At most 200 entries are inspected. Refresh receipts return named `problems`,
+`complete` and `truncated`, so a partial catalog does not silently appear complete.
+Partial refresh retains its verified subset and returns a known error with all
+selected problems available through the existing result-read pages. If no valid
+snapshot remains, the previous inventory is kept. Refresh neither fetches nor
+installs selected tool sources, substitutes private forks, starts MCP/model code,
+nor rewrites earlier installation or failed-operation receipts. Explicit source
+inspection remains available separately. Client presentation of partial refresh
+and live successor adoption require their own acceptance.

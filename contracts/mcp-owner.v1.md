@@ -122,3 +122,22 @@ installed package, browser/account, release and live adoption receipts stay
 separate. New credential migration, remote retirement/task protocols or mutable
 legacy adoption are proposals requiring review by their authority owners; this
 v1 restatement grants none of them.
+
+## Pointer-bound catalog metadata
+
+MCP1/MCP3/MCP4 require catalog rows to distinguish valid source-bound snapshots,
+partial metadata and upstream currency. Snapshot verification checks exact
+repository/ref/path attribution, source commit, original manifest scope and last
+successful refresh, using bounded static files only. It does not qualify tool
+code, prerequisites, installation or account access. Named per-entry failures
+and truncation remain in durable refresh results; an entirely invalid refresh
+keeps earlier inventory. Original install/unknown-effect receipts remain unchanged.
+[Catalog snapshot tests](../python/tests/test_catalog_snapshots.py) cover pointer
+variants, missing/mismatched/unsafe metadata, symlinks, bounded partial catalogs
+and durable failure attribution. Current upstream catalog, source, installed
+package and client/live acceptance remain distinct evidence.
+
+Delegated commands retain the native operation timestamp in their first response,
+duplicate response and selected receipt reads. The broker only timestamps its own
+receipts. Confirmed and unknown post-dispatch outcomes retain identical saved
+receipts without executing again; existing receipts are not rewritten.

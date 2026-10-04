@@ -29,6 +29,7 @@ async def test_real_sdk_open_resources_binding_and_no_replay(broker,tmp_path):
  args={'canvasId':identity,'expectedRevision':1,'name':'increment','arguments':{'amount':3}}
  first=await act('appCall',args,'app-call');assert first['receipt']['status']=='completed',first
  second=await act('appCall',args,'app-call');assert second['duplicate']
+ assert second['receipt']==first['receipt']==broker.command_receipt(SCOPE,'app-call')
  assert len((tmp_path/'calls.jsonl').read_text().splitlines())==2
  with pytest.raises(ValueError,match='another request'):await act('appCall',{**args,'arguments':{'amount':9}},'app-call')
  with pytest.raises(ValueError,match='not available'):await broker.read(OTHER,identity,'document',revision=1)
@@ -69,6 +70,7 @@ async def test_transport_loss_after_effect_is_durable_unknown_not_replayed(broke
  result=await act('appCall',args,'crash');assert result['receipt']['status']=='interrupted',result
  assert result['receipt']['outcome']=='unknown' and result['receipt']['requestState']=='dispatched'
  retry=await act('appCall',args,'crash');assert retry['duplicate'] and retry['receipt']['outcome']=='unknown'
+ assert retry['receipt']==result['receipt']==broker.command_receipt(SCOPE,'crash')
  assert len((tmp_path/'calls.jsonl').read_text().splitlines())==2
 async def test_binding_rechecked_at_actual_dispatch(broker,tmp_path):
  act=await setup(broker,tmp_path);view=await opened(broker,act)
