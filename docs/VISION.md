@@ -23,6 +23,10 @@ records inherited promises, existing seams and acceptance gaps separately.
   lifetimes before it claims safe replacement.
 - Explicit migration preserves selected originals and identities. Configuration
   adoption, credential authorization and execution adoption remain distinct.
+- An information worker can add a tool without selecting a Python version or
+  interpreting installer logs. The owner prepares declared prerequisites in an
+  isolated environment and supplies actionable summaries with selected details.
+  Installed, connected, account-confirmed and ready remain distinct evidence.
 
 ## Ownership and scope
 
