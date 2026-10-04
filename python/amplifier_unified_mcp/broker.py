@@ -20,9 +20,9 @@ ACTIONS['smartTools.context'][1]['required']=['canvasId','expectedRevision','con
 
 class Broker:
  def __init__(self,data_dir,*,server_config=None):
-  self.manager=SmartToolsManager(data_dir,server_config=server_config)
+  self.manager=SmartToolsManager(data_dir,server_config=server_config,_store_profile="broker")
   self.db=self.manager.db
-  self.db.executescript('CREATE TABLE IF NOT EXISTS commands(id TEXT PRIMARY KEY,scope TEXT NOT NULL,hash TEXT NOT NULL,value TEXT NOT NULL);CREATE TABLE IF NOT EXISTS views(id TEXT,revision INTEGER,scope TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(id,revision));CREATE INDEX IF NOT EXISTS scoped_views ON views(scope,id,revision);')
+  self.db.execute('CREATE INDEX IF NOT EXISTS scoped_views ON views(scope,id,revision)')
   self.db.executescript("CREATE INDEX IF NOT EXISTS command_scope ON commands(scope); CREATE INDEX IF NOT EXISTS command_status ON commands(json_extract(value,'$.status'));")
   self.db.execute("UPDATE commands SET value=json_set(value,'$.status','interrupted','$.outcome','unknown','$.error','Broker restarted; work was not replayed.') WHERE json_extract(value,'$.status')='running'")
   self.db.execute("CREATE INDEX IF NOT EXISTS presentations ON views(scope,json_extract(value,'$.presentationKey'),revision)")

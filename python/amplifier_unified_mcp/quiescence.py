@@ -17,7 +17,6 @@ class Quiescence:
         self.db, self.work, self.active = db, work, 0
         self.on_idle = on_idle
         self.live_fence = None
-        db.executescript('CREATE TABLE IF NOT EXISTS owner_quiescence(id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS owner_quiescence_receipts(fence TEXT PRIMARY KEY,value TEXT NOT NULL);')
         old = self.current()
         if old:
             old['state'] = 'unknown'

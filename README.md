@@ -105,6 +105,33 @@ The renderer must use an opaque iframe without allow-same-origin, validate sourc
 
 Command scope/fingerprint is durable before execution. Tool dispatch marks and commits unknown immediately before transport invocation. Explicit responses confirm outcome; post-dispatch loss becomes `status:'interrupted',outcome:'unknown'`. Duplicate identical commands return receipts after restart; conflicting reuse rejects. Nothing reconnects/repeats a call automatically. Result blobs stay on disk, hydrate only for selected operations, and are not deleted by UI overview rollover.
 
+Startup validates an existing `smart-tools/broker.sqlite3` through a read-only
+connection before setting journal mode, creating indexes, or normalizing receipts.
+Validation reads only the eight required schema entries with bounded DDL text;
+a DDL value at the 4,097-character sentinel is refused before normalization,
+so a truncated declared prefix cannot hide an incompatible suffix.
+It does not scan database rows or run whole-database integrity checks.
+All eight broker tables retain authoritative configuration, receipt, result,
+view, import, or fence data. Missing or incompatible tables and unreadable,
+empty databases and unreadable schemas refuse owner startup; the database is
+preserved and no initialization/capability acknowledgement is sent. Crash-left
+WAL contents participate in the read-only check; refusal preserves both the
+database and WAL without checkpointing. There is no
+automatic missing-table repair or request replay. Derived indexes may rebuild
+only after authoritative schema validation. Intentional creation of a previously
+absent database with no `-wal`, `-shm`, or `-journal` path creates the complete
+requested profile transactionally. Even an empty or dangling orphan sidecar
+refuses before any connection or main-file creation. An
+interrupted initialization that leaves an existing incomplete file is refused.
+
+The standalone manager retains its three-table profile. A surviving broker table
+requires the complete broker profile even for a manager reader. Opening a
+manager-only or older incomplete schema as a broker is not an inferred upgrade;
+no historical schema migration is declared by this change. Whole-database
+replacement/deletion and valid row deletion are outside structural validation:
+this guard cannot establish historical completeness, unselected data-page
+integrity, or reconstruct lost receipts.
+
 Indexed receipt updates do not serialize unrelated catalogs or installations. Initial records are bounded to 768 KB. MCP source/results retain 2 MB bounds. Limits: 64 registrations, eight explicitly active transports. Identity comes only from connector-attested resource over SDK-authenticated transport, never decoded tokens or browser claims. Exact review revision/issuer/subject remain required. Tokens use private files; environment config stores variable names; returned diagnostics are redacted.
 
 Host-only GET `/oauth/mcp/callback` invokes `.oauthCallback(queryPairs, exactOrigin)`. Preserve duplicate query keys for validation and never log callback queries. SDK PKCE/issuer/resource/state/expiry/single-consumption checks remain. No extra HTTP server is started.

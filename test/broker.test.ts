@@ -62,3 +62,28 @@ test('real Python inspect/install receipts keep package descriptors inert throug
   assert.equal(await readFile(path.join(dir,'data/smart-tools/fixture-checkouts'),'utf8'),'2');
  }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
 });
+
+test('damaged authoritative receipt/configuration stores refuse actual broker startup without re-admission',{skip:!existsSync(python)},async t=>{
+ const {execFileSync}=await import('node:child_process');
+ for(const missing of [['records'],['commands'],['smart_tool_operations'],['commands','smart_tool_operations'],['oversized-commands-ddl']])await t.test(missing.join('+'),async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'unified-mcp-damaged-'));const config=path.join(dir,'broker.json');await writeFile(config,JSON.stringify({dataDir:path.join(dir,'data')}));
+  const script="import asyncio,json,sqlite3,sys;from pathlib import Path;from amplifier_unified_mcp.broker import Broker;from amplifier_unified_mcp.store import BROKER_TABLES\nasync def seed():\n b=Broker(Path(sys.argv[1])/'data');r=await b.action('host','smartTools.configure',{'name':'Inert metadata','command':'/usr/bin/false'},'same-owned-command');assert r['receipt']['status']=='completed';await b.close()\nasyncio.run(seed())\np=Path(sys.argv[1])/'data/smart-tools/broker.sqlite3';db=sqlite3.connect(p)\nfor table in json.loads(sys.argv[2]):\n if table=='oversized-commands-ddl':\n  rows=db.execute('SELECT * FROM commands').fetchall();db.execute('DROP TABLE commands');db.execute(BROKER_TABLES['commands']+' '*5000+' WITHOUT ROWID');db.executemany('INSERT INTO commands VALUES(?,?,?,?)',rows)\n else:db.execute('DROP TABLE '+table)\ndb.commit();db.close()";
+  execFileSync(python,['-B','-c',script,dir,JSON.stringify(missing)]);
+  const database=path.join(dir,'data/smart-tools/broker.sqlite3');const original=await readFile(database);
+  const owner=createMCPCapabilities({broker:{command:python,args:['-B','-m','amplifier_unified_mcp.server','--config',config],cwd:root},inspectSession:async()=>({}),registerExternal:async()=>{throw Error('No resource registration expected');}});
+  try{
+   await assert.rejects(owner.actionSchemas(),/broker exited|unavailable/i);
+   await assert.rejects(owner.action({version:1,topic:'connectors',operation:'smartTools.configure',channel:'ahp-root://',commandId:'same-owned-command',args:{name:'Inert metadata',command:'/usr/bin/false'}},{clientId:'test'}),/broker|closed|unavailable/i);
+   assert.deepEqual(await readFile(database),original);
+  }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
+ });
+});
+
+test('orphan SQLite sidecars refuse actual broker initialization without creating a main file',{skip:!existsSync(python)},async t=>{
+ const {mkdir,stat}=await import('node:fs/promises');
+ for(const suffix of ['-wal','-shm','-journal'])await t.test(suffix,async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'unified-mcp-orphan-'));const config=path.join(dir,'broker.json'),data=path.join(dir,'data'),database=path.join(data,'smart-tools/broker.sqlite3');await mkdir(path.dirname(database),{recursive:true});const sidecar=database+suffix;await writeFile(sidecar,'');const before=await stat(sidecar);await writeFile(config,JSON.stringify({dataDir:data}));
+  const owner=createMCPCapabilities({broker:{command:python,args:['-B','-m','amplifier_unified_mcp.server','--config',config],cwd:root},inspectSession:async()=>({}),registerExternal:async()=>{throw Error('No registration expected');}});
+  try{await assert.rejects(owner.actionSchemas(),/broker exited|unavailable/i);assert.equal(existsSync(database),false);assert.deepEqual(await readFile(sidecar),Buffer.alloc(0));const after=await stat(sidecar);assert.equal(after.ino,before.ino);assert.equal(after.mode,before.mode);}finally{await owner.close();await rm(dir,{recursive:true,force:true});}
+ });
+});

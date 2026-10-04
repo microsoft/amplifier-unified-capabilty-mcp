@@ -40,8 +40,6 @@ def parse(text):
 class LegacyImport:
     def __init__(self, broker):
         self.b = broker
-        broker.db.execute('CREATE TABLE IF NOT EXISTS legacy_imports(command TEXT PRIMARY KEY,scope TEXT NOT NULL,binding TEXT NOT NULL UNIQUE,value TEXT NOT NULL)')
-        broker.db.commit()
 
     def receipt(self, command, scope):
         token(command, 'import command')
