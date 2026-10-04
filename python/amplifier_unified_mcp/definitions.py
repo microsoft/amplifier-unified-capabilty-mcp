@@ -2,6 +2,7 @@ def definitions(schema, string):
     identity = {'id': string(100)}
     source = {'repository': string(2000), 'ref': string(500), 'path': string(1000)}
     return {
+        'smartTools.installerReadiness': ('Read installer executable availability without running it, downloading software or checking tool prerequisites. Does not imply an installed or ready tool.', schema()),
         'smartTools.catalog': ('Refresh the public Smart Tools catalog; listing does not install or run code.', schema()),
         'smartTools.inspect': ('Read a Git Smart Tool descriptor and manifest without running its code.', schema(source, ['repository'])),
         'smartTools.setup': ('Read one installed tool’s exact source documentation and declared CLI guidance. Does not run checks, connect, configure credentials or imply readiness. Follow nextOffset for the complete manifest.', schema({**identity,'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':16000}}, ['id'])),
