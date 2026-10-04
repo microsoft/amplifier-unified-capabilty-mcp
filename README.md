@@ -52,12 +52,20 @@ attempts survive process replacement as unknown. Only the exact distinct
 cannot authorize abort, and abort proof cannot authorize generic release. Owner,
 command, fence, instance and data-scope identity remain exact. Legacy held or unknown
 rows without original attempt evidence stay unknown and require their original
-recovery path. Missing held rows alone never establish `not-acquired`.
+recovery path. Missing held rows alone never establish `not-acquired`. An original acquired
+attempt already released `unchanged` with the exact retained `admission-refused`
+release signature can settle as `released` under a new supervisor abort proof.
+Generic release evidence cannot substitute for that pre-effect unwind or authorize
+abort.
 
 Settlement stores the original owner receipt and clears that exact held row in one
 transaction. Lost replies and exact retries return the same retained receipt across
 restart without a second settlement or effect. Changed proof, unrelated current
-fence, issued/background work and pending Node acquisition/settlement refuse.
+fence or issued/background work prevents clearing an unsettled held attempt.
+Exact completed receipt observations and conclusive pre-effect release settlements
+preserve newer holds and active work. The private forwarding `passiveOnly` guard
+prevents a receipt observation during Node work from clearing a held broker fence.
+Pending Node acquisition/settlement still refuses concurrent transitions.
 Retirement coverage gaps alone can be unwound after a definitive refusal: abort
 does not retire connected peers or claim successful update admission. MCP and Smart
 Tools share this existing broker gate; no new gate database, schema table or shared

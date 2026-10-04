@@ -76,3 +76,41 @@ test('actual Python protocol lost abort reply and process replacement retain exa
   await assert.rejects(action(owner),/intake is closed/);
  }finally{await owner.close();await rm(dir,{recursive:true,force:true})}
 });
+
+
+test('actual Python partial admission unwind requires distinct abort authority and preserves newer hold',{skip:!existsSync(python)},async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'mcp-partial-abort-')),config=path.join(dir,'broker.json');
+ await writeFile(config,JSON.stringify({dataDir:path.join(dir,'owned')}));
+ const create=()=>createMCPCapabilities({...options(null),broker:{command:python,args:['-I','-B','-m','amplifier_unified_mcp.server','--config',config]}});
+ let owner=create();let original:any;
+ try{
+  let p=owner.quiescenceParticipant();const lease=await p.acquire(c);assert.ok(lease);
+  await lease.release('unchanged',{kind:'admission-refused'});
+  await assert.rejects(p.abortAdmission({...c,proof:{kind:'admission-refused'}}),/proof/);
+  await owner.close();owner=create();p=owner.quiescenceParticipant();
+  const newer={...c,fenceId:'newer-fence',commandId:'newer-command'};assert.ok(await p.acquire(newer));
+  original=await p.abortAdmission({...c,proof});assert.equal(original.status,'released');
+  assert.deepEqual(await p.abortAdmission({...c,proof}),original);
+  assert.deepEqual(await p.abortAdmission({...c,proof}),original);
+  await assert.rejects(action(owner),/intake is closed/);
+  await owner.close();owner=create();p=owner.quiescenceParticipant();
+  assert.deepEqual(await p.abortAdmission({...c,proof}),original);
+ }finally{await owner.close();await rm(dir,{recursive:true,force:true})}
+});
+
+
+test('completed old abort observation leaves newer Node effects active without installing an old gate',async()=>{
+ const entered=pause(),finished=pause();const argsSeen:any[]=[];
+ const owner=createMCPCapabilities(options(async(method:string,args:any)=>{
+  if(method==='initialize')return hello;
+  if(method==='quiescence/abortAdmission'){argsSeen.push(args);return receipt}
+  entered.resolve();await finished.promise;return {done:true};
+ }));
+ try{
+  const effect=action(owner);await entered.promise;
+  assert.deepEqual(await owner.quiescenceParticipant().abortAdmission({...c,proof}),receipt);
+  assert.equal(argsSeen[0].passiveOnly,true);
+  finished.resolve();await effect;
+  await action(owner);
+ }finally{finished.resolve();await owner.close()}
+});

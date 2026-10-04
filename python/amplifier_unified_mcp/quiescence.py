@@ -84,7 +84,7 @@ class Quiescence:
         self.live_fence = value['fenceId']
         return {'held': True, 'ownerId': owner_id, 'fenceId': value['fenceId']}
 
-    def abort_admission(self, owner_id, context, proof):
+    def abort_admission(self, owner_id, context, proof, passive_only=False):
         """Settle one recorded pre-retirement attempt; absence never proves refusal.
 
         The private host channel supplies authenticated supervisor authority.
@@ -108,25 +108,39 @@ class Quiescence:
                 or prior.get('purpose') != 'distribution-update' or any(prior.get(key) != binding[key] for key in fields)):
             raise ValueError('Original durable MCP admission attempt unavailable; absence is not proof.')
         old = self.current()
-        if old and (old.get('ownerId') != owner_id or old.get('purpose') != 'distribution-update'
-                    or any(old.get(key) != binding[key] for key in fields)):
-            raise ValueError('A different MCP fence requires reconciliation.')
-        work = self.work()
-        if self.active or any(work['counts'].values()):
-            raise ValueError('MCP admission work is still pending; intake was not changed.')
         if prior.get('state') == 'admission-aborted':
-            if old or prior.get('abortProofSignature') != signature:
+            if prior.get('abortProofSignature') != signature:
                 raise ValueError('MCP admission abort differs from its retained proof.')
+            # Reading the exact completed receipt cannot disturb newer intake/work.
             return json.loads(json.dumps(prior['abortReceipt']))
-        if old:
-            if (old.get('admissionAttemptVersion') != 1 or old.get('state') not in {'held', 'unknown'}
-                    or prior.get('state') not in {'held', 'unknown'}):
-                raise ValueError('Original held MCP admission attempt unavailable.')
+        partial_unwind = (prior.get('state') == 'released' and prior.get('outcome') == 'unchanged'
+                          and prior.get('releaseSignature') == json.dumps(
+                              ['unchanged', {'kind': 'admission-refused'}], sort_keys=True, separators=(',', ':')))
+        clear_held = False
+        if partial_unwind:
+            # Exact pre-effect release evidence is not abort authority. The new
+            # authenticated supervisor proof above is still required. No intake
+            # or current work belongs to this already conclusively unwound lease.
+            if old and all(old.get(key) == binding[key] for key in fields):
+                raise ValueError('Released MCP admission attempt unexpectedly still held.')
             status = 'released'
         else:
-            if prior.get('state') != 'not-acquired':
-                raise ValueError('Original durable MCP refusal unavailable; missing held row is not proof.')
-            status = 'not-acquired'
+            if old and (old.get('ownerId') != owner_id or old.get('purpose') != 'distribution-update'
+                        or any(old.get(key) != binding[key] for key in fields)):
+                raise ValueError('A different MCP fence requires reconciliation.')
+            work = self.work()
+            if self.active or any(work['counts'].values()):
+                raise ValueError('MCP admission work is still pending; intake was not changed.')
+            if old:
+                if (passive_only or old.get('admissionAttemptVersion') != 1
+                        or old.get('state') not in {'held', 'unknown'} or prior.get('state') not in {'held', 'unknown'}):
+                    raise ValueError('Original held MCP admission attempt unavailable for passive observation.')
+                status = 'released'
+                clear_held = True
+            else:
+                if prior.get('state') != 'not-acquired':
+                    raise ValueError('Original durable MCP refusal unavailable; missing held row is not proof.')
+                status = 'not-acquired'
         receipt = {**binding, 'ownerId': owner_id, 'status': status,
                    'receiptId': 'mcp-admission-abort:' + hashlib.sha256(json.dumps([owner_id, binding, proof], sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
         settled = {**prior, 'state': 'admission-aborted', 'abortProofSignature': signature, 'abortReceipt': receipt}
@@ -134,9 +148,10 @@ class Quiescence:
         # A lost reply/restart reads this exact record instead of repeating work.
         with self.db:
             self.db.execute('UPDATE owner_quiescence_receipts SET value=? WHERE fence=?', (json.dumps(settled), binding['fenceId']))
-            if old:self.db.execute('DELETE FROM owner_quiescence WHERE id=1')
-        self.live_fence = None
-        self.on_idle()
+            if clear_held:self.db.execute('DELETE FROM owner_quiescence WHERE id=1')
+        if clear_held:
+            self.live_fence = None
+            self.on_idle()
         return receipt
 
     def release(self, owner_id, context, outcome, proof):

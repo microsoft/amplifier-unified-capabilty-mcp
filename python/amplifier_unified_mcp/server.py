@@ -19,7 +19,7 @@ async def run(config,output):
    p=row.get('params',{});method=row['method']
    if method=='initialize':result={'protocolVersion':1,'capabilities':{'actions':list(ACTIONS),'resources':True,'oauthCallback':True,'quiescence':{'version':1,'held':True,'retentionHide':{'version':1},'managedFiles':{'version':1,'preservesCanonical':True},'serviceStop':{'version':1},'admissionAbort':{'version':1}}}}
    elif method=='quiescence/acquire':result=broker.quiescence.acquire(p['ownerId'],p['context'])
-   elif method=='quiescence/abortAdmission':result=broker.quiescence.abort_admission(p['ownerId'],p['context'],p['proof'])
+   elif method=='quiescence/abortAdmission':result=broker.quiescence.abort_admission(p['ownerId'],p['context'],p['proof'],p.get('passiveOnly') is True)
    elif method=='quiescence.retention':result=broker.retention_references(p)
    elif method=='quiescence.managedFiles':result=broker.managed_references(p)
    elif method=='quiescence/inspect':result=broker.quiescence.inspect()

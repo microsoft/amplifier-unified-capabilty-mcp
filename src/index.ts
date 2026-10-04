@@ -77,9 +77,16 @@ export class MCPCapabilities {
    }finally{this.acquiring--;}
   },abortAdmission:async(input:Readonly<QuiescenceContext>&{proof:AdmissionAbortProof})=>{
    const proof=admissionAbortProof(input,input.proof);
-   if(this.activeEffects||this.acquiring||this.aborting)throw Error('MCP admission work is still pending; intake was not changed');
+   if(this.acquiring||this.aborting)throw Error('MCP admission work is still pending; intake was not changed');
    const exact:QuiescenceContext={fenceId:input.fenceId,commandId:input.commandId,purpose:input.purpose,instanceId:input.instanceId,dataScope:input.dataScope};
-   if(this.gate&&(this.gate.ownerId!==ownerId||(['fenceId','commandId','purpose','instanceId','dataScope'] as const).some(key=>this.gate!.context[key]!==exact[key])))throw Error('A different MCP gate requires reconciliation');
+   const passive=Boolean(this.activeEffects||(this.gate&&(this.gate.ownerId!==ownerId||(['fenceId','commandId','purpose','instanceId','dataScope'] as const).some(key=>this.gate!.context[key]!==exact[key]))));
+   if(passive){
+    const hello=await this.call('initialize',{});
+    if(hello.capabilities?.quiescence?.admissionAbort?.version!==1)throw Error('MCP owner lacks admission abort receipt support');
+    // The broker may observe a completed abort or settle an exact pre-effect
+    // unwind, but cannot clear intake while Node has unrelated work or a gate.
+    return admissionAbortReceipt(ownerId,exact,await this.call('quiescence/abortAdmission',{ownerId,context:exact,proof,passiveOnly:true}));
+   }
    this.gate={ownerId,context:exact};this.aborting=true;
    try{
     const hello=await this.call('initialize',{});

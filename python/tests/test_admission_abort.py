@@ -115,7 +115,8 @@ async def test_changed_owner_current_fence_or_pending_work_cannot_unwind(tmp_pat
         with pytest.raises(ValueError,match='pending'):b.quiescence.abort_admission('mcp',c,proof(c))
         b.manager.background_io.clear();b.quiescence.abort_admission('mcp',c,proof(c))
         other={**c,'fenceId':'new-fence','commandId':'new-command'};b.quiescence.acquire('mcp',other)
-        with pytest.raises(ValueError,match='different'):b.quiescence.abort_admission('mcp',c,proof(c))
+        receipt=b.quiescence.abort_admission('mcp',c,proof(c))
+        assert_receipt(receipt,c,'released')
         assert b.quiescence.current()['fenceId']=='new-fence'
     finally:await b.close()
 
@@ -137,4 +138,78 @@ async def test_abort_preserves_original_unknown_smart_tool_command(tmp_path):
         with b.db:b.db.execute('INSERT INTO commands VALUES(?,?,?,?)',('original-tool-command','host','original',value))
         b.quiescence.acquire('mcp',c);b.quiescence.abort_admission('mcp',c,proof(c))
         assert b.db.execute('SELECT value FROM commands WHERE id=?',('original-tool-command',)).fetchone()[0]==value
+    finally:await b.close()
+
+
+async def test_partial_unwind_restart_settles_released_with_new_abort_authority(tmp_path):
+    c=context();b=Broker(tmp_path)
+    assert b.quiescence.acquire('mcp',c)['held']
+    assert b.quiescence.release('mcp',c,'unchanged',{'kind':'admission-refused'})['released']
+    retained=b.db.execute('SELECT value FROM owner_quiescence_receipts').fetchone()[0]
+    await b.close();b=Broker(tmp_path)
+    try:
+        with pytest.raises(ValueError,match='proof'):
+            b.quiescence.abort_admission('mcp',c,{'kind':'admission-refused'})
+        assert b.db.execute('SELECT value FROM owner_quiescence_receipts').fetchone()[0]==retained
+        receipt=b.quiescence.abort_admission('mcp',c,proof(c))
+        assert_receipt(receipt,c,'released')
+        b.db.execute("CREATE TEMP TRIGGER no_partial_repeat BEFORE UPDATE ON owner_quiescence_receipts BEGIN SELECT RAISE(ABORT,'repeated partial unwind');END")
+        assert b.quiescence.abort_admission('mcp',c,proof(c))==receipt
+        with pytest.raises(ValueError,match='proof'):
+            b.quiescence.abort_admission('mcp',c,{**proof(c),'receiptId':'different'})
+    finally:await b.close()
+
+
+@pytest.mark.parametrize('change',['signature-missing','signature-generic','signature-ready','outcome-unknown','attempt-marker-missing'])
+async def test_partial_unwind_incomplete_or_generic_evidence_refuses(tmp_path,change):
+    c=context();b=Broker(tmp_path)
+    try:
+        b.quiescence.acquire('mcp',c)
+        b.quiescence.release('mcp',c,'unchanged',{'kind':'admission-refused'})
+        prior=json.loads(b.db.execute('SELECT value FROM owner_quiescence_receipts').fetchone()[0])
+        if change=='signature-missing':prior.pop('releaseSignature')
+        elif change=='signature-generic':prior['releaseSignature']=json.dumps(['unchanged',{**c,'verified':True,'outcome':'unchanged','receiptId':'generic-release'}],sort_keys=True,separators=(',',':'))
+        elif change=='signature-ready':prior['releaseSignature']=json.dumps(['ready',{'kind':'admission-refused'}],sort_keys=True,separators=(',',':'))
+        elif change=='outcome-unknown':prior['outcome']='unknown'
+        else:prior.pop('admissionAttemptVersion')
+        before=json.dumps(prior)
+        with b.db:b.db.execute('UPDATE owner_quiescence_receipts SET value=?',(before,))
+        with pytest.raises(ValueError,match='unavailable'):
+            b.quiescence.abort_admission('mcp',c,proof(c))
+        assert b.db.execute('SELECT value FROM owner_quiescence_receipts').fetchone()[0]==before
+        assert not b.quiescence.current()
+    finally:await b.close()
+
+
+async def test_partial_unwind_preserves_newer_unrelated_hold(tmp_path):
+    c=context();b=Broker(tmp_path)
+    try:
+        b.quiescence.acquire('mcp',c)
+        b.quiescence.release('mcp',c,'unchanged',{'kind':'admission-refused'})
+        other={**c,'fenceId':'newer-fence','commandId':'newer-command'}
+        b.quiescence.acquire('mcp',other)
+        held=b.db.execute('SELECT value FROM owner_quiescence').fetchone()[0]
+        receipts=b.db.execute('SELECT fence,value FROM owner_quiescence_receipts ORDER BY fence').fetchall()
+        receipt=b.quiescence.abort_admission('mcp',c,proof(c))
+        assert_receipt(receipt,c,'released')
+        assert b.db.execute('SELECT value FROM owner_quiescence').fetchone()[0]==held
+        assert b.quiescence.live_fence==other['fenceId']
+        assert b.db.execute('SELECT value FROM owner_quiescence_receipts WHERE fence=?',(other['fenceId'],)).fetchone()[0]==dict(receipts)[other['fenceId']]
+        b.quiescence.active=1;b.manager.background_io.add('newer-work')
+        assert b.quiescence.abort_admission('mcp',c,proof(c))==receipt
+        assert b.db.execute('SELECT value FROM owner_quiescence').fetchone()[0]==held
+        b.quiescence.active=0;b.manager.background_io.clear()
+    finally:await b.close()
+
+
+async def test_passive_node_observation_never_clears_matching_live_hold(tmp_path):
+    c=context();b=Broker(tmp_path)
+    try:
+        b.quiescence.acquire('mcp',c)
+        held=b.db.execute('SELECT value FROM owner_quiescence').fetchone()[0]
+        prior=b.db.execute('SELECT value FROM owner_quiescence_receipts').fetchone()[0]
+        with pytest.raises(ValueError,match='passive'):
+            b.quiescence.abort_admission('mcp',c,proof(c),passive_only=True)
+        assert b.db.execute('SELECT value FROM owner_quiescence').fetchone()[0]==held
+        assert b.db.execute('SELECT value FROM owner_quiescence_receipts').fetchone()[0]==prior
     finally:await b.close()
