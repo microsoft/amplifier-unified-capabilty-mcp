@@ -82,7 +82,10 @@ export class MCPCapabilities {
   const scope=scopeOf(request.channel);if(request.version!==1||request.topic!=='connectors'||!NAMES.includes(String(request.operation).replace(/^smartTools\./,''))||!String(request.operation).startsWith('smartTools.'))throw Error('MCP action is not advertised.');
   const trusted=await this.authorize(scope,context);const result=await this.call('action',{scope,operation:request.operation,args:request.args??{},commandId:request.commandId,origin:context.origin??'ui'});
   if(result.read)return {accepted:true,updates:request.operation==='smartTools.authStatus'?[this.record(scope,await this.call('snapshot',{scope}))]:[],invalidate:[],result:result.result};
-  let descriptor=result.descriptor??result.receipt?.result?.descriptor;
+  // Only view-producing actions own nested artifact descriptors on duplicate receipts.
+  // Package metadata and arbitrary MCP results may also use the key descriptor.
+  const viewAction=['smartTools.open','smartTools.reconnectView','smartTools.context'].includes(String(request.operation));
+  let descriptor=result.descriptor??(viewAction?result.receipt?.result?.descriptor:undefined);
   if(descriptor){descriptor=await this.options.registerExternal({session:scope,workingDirectory:trusted.workingDirectory},descriptor);result.artifact=descriptor;}
   this.options.onInvalidate?.('connectors',scope);
   return {accepted:true,updates:[this.record(scope,await this.call('snapshot',{scope}))],invalidate:[],result:result.receipt,_meta:{'amplifier.dev/operation':{id:request.commandId}},...(result.artifact?{artifact:result.artifact}:{})};

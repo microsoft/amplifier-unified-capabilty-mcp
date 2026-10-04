@@ -27,3 +27,31 @@ test('actual Node capability to Python stdio to independent MCP SDK server round
   const app=await action('appCall',{canvasId:descriptor!.id,expectedRevision:1,name:'increment',arguments:{amount:6}});assert.equal(app.result.status,'completed');assert.equal((await readFile(path.join(dir,'effects.jsonl'),'utf8')).trim().split('\n').length,2);
  }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
 });
+
+for(const operation of ['install','inspect','call']){
+ test(`inert ${operation} result descriptor never registers an artifact`,async()=>{
+  const metadata={manifest:'SMART_TOOL.md',cli_argv:['example']};let registrations=0;
+  const owner=createMCPCapabilities({broker:{request:async(method,args)=>method==='snapshot'?{}:{receipt:{id:args.commandId,status:'completed',result:{descriptor:metadata}}},close:async()=>{}},inspectSession:async()=>({workingDirectory:'/owned'}),registerExternal:async()=>{registrations++;throw Error('Invalid external artifact identity');}});
+  try{const result=await owner.action({version:1,topic:'connectors',channel:scope,operation:'smartTools.'+operation,commandId:'inert-'+operation},{clientId:'test',session:scope});assert.equal(result.result.status,'completed');assert.deepEqual(result.result.result.descriptor,metadata);assert.equal(result.artifact,undefined);assert.equal(registrations,0);}finally{await owner.close();}
+ });
+}
+for(const operation of ['open','reconnectView','context']){
+ test(`retained ${operation} descriptor re-registers after acknowledgement loss`,async()=>{
+  const descriptor={id:'saved-app',providerRevision:1,resourceUri:'amplifier-mcp://views/saved-app/document'};let registrations=0;
+  const owner=createMCPCapabilities({broker:{request:async(method,args)=>method==='snapshot'?{}:{duplicate:true,receipt:{id:args.commandId,status:'completed',result:{descriptor}}},close:async()=>{}},inspectSession:async()=>({workingDirectory:'/owned'}),registerExternal:async(_context,value)=>{registrations++;assert.deepEqual(value,descriptor);return value;}});
+  try{const result=await owner.action({version:1,topic:'connectors',channel:scope,operation:'smartTools.'+operation,commandId:'recover-'+operation},{clientId:'test',session:scope});assert.equal(registrations,1);assert.deepEqual(result.artifact,descriptor);}finally{await owner.close();}
+ });
+}
+test('real Python inspect/install receipts keep package descriptors inert through the facade',{skip:!existsSync(python)},async()=>{
+ const dir=await mkdtemp(path.join(tmpdir(),'unified-mcp-package-boundary-'));const config=path.join(dir,'broker.json');await writeFile(config,JSON.stringify({dataDir:path.join(dir,'data')}));
+ const owner=createMCPCapabilities({broker:{command:python,args:[path.join(root,'python/tests/fixtures/install_broker.py'),'--config',config],cwd:root},inspectSession:async()=>({workingDirectory:dir}),registerExternal:async()=>{throw Error('Invalid external artifact identity');}});
+ const source={repository:'https://example.invalid/boundary-fixture',ref:'a'.repeat(40),path:'.'};const context={clientId:'test',session:scope};
+ const action=(operation:string,args:Json,commandId:string)=>owner.action({version:1,topic:'connectors',channel:scope,operation:'smartTools.'+operation,commandId,args},context);
+ try{
+  const inspected=await action('inspect',source,'inspect-package');assert.equal(inspected.result.status,'completed');assert.equal(inspected.artifact,undefined);assert.deepEqual(inspected.result.result.descriptor.cli_argv,['boundary-fixture']);
+  const installed=await action('install',source,'install-package');assert.equal(installed.result.status,'completed',JSON.stringify(installed.result));assert.equal(installed.result.outcome,'confirmed');assert.equal(installed.artifact,undefined);assert.deepEqual(installed.result.result.descriptor.cli_argv,['boundary-fixture']);
+  const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');assert.equal((await promisify(execFile)(installed.result.result.python,['-c','import boundary_fixture; print(boundary_fixture.VALUE)'])).stdout.trim(),'installed');
+  const again=await action('install',source,'install-package');assert.equal(again.result.status,'completed');assert.equal(again.result.id,installed.result.id);assert.deepEqual(again.result.result,installed.result.result);assert.equal(await readFile(path.join(dir,'data/smart-tools/fixture-checkouts'),'utf8'),'2');
+  const retained=await action('readResult',{operationId:'install-package'},'passive-read');assert.equal(retained.result.operation.status,'completed');assert.equal(retained.result.operation.result.id,installed.result.result.id);
+ }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
+});
