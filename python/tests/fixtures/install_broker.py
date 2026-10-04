@@ -1,6 +1,7 @@
 """Real install/broker fixture; substitutes only network checkout with inert source."""
 import json
 import uuid
+import subprocess
 from amplifier_unified_mcp.smart_tools import SmartToolsManager
 from amplifier_unified_mcp.server import main
 
@@ -23,12 +24,19 @@ async def checkout(self, repository, ref=None):
     folder = self.root / 'sources' / uuid.uuid4().hex
     folder.mkdir(parents=True)
     (folder / 'smart-tool.json').write_text(json.dumps({'manifest': 'SMART_TOOL.md', 'cli_argv': ['boundary-fixture']}))
-    (folder / 'SMART_TOOL.md').write_text("---\nsmart_tool_format: 1\nname: boundary-fixture\nversion: '1.0'\ndescription: Inert package boundary fixture\n---\n")
+    (folder / 'SMART_TOOL.md').write_text("---\nsmart_tool_format: 1\nname: boundary-fixture\nversion: '1.0'\ndescription: Inert package boundary fixture\n---\n# Retained setup\nCLI help does not need a model. Optional MCP support is tool-owned.\n")
     (folder / 'pyproject.toml').write_text("[project]\nname='boundary-fixture'\nversion='1.0'\nrequires-python='>=3.13'\n[build-system]\nrequires=[]\nbuild-backend='backend'\nbackend-path=['.']\n")
     (folder / 'backend.py').write_text(BACKEND)
+    def git(*args):
+        return subprocess.run(['git', '-C', str(folder), *args], check=True, capture_output=True).stdout.decode().strip()
+    git('init', '-q')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.invalid')
+    git('add', '.')
+    git('commit', '-qm', 'Exact inert source')
     counter = self.root / 'fixture-checkouts'
     counter.write_text(str(int(counter.read_text()) + 1 if counter.exists() else 1))
-    return folder, 'a' * 40
+    return folder, git('rev-parse', 'HEAD')
 
 SmartToolsManager._checkout = checkout
 main()

@@ -80,6 +80,10 @@ def _relative(value):
     return value
 
 
+def _installation_identity(repository, commit, path, extras):
+    return hashlib.sha256(json.dumps([repository, commit, path, sorted(extras)]).encode()).hexdigest()[:24]
+
+
 def _install_environment():
     from mcp.client.stdio import get_default_environment
     environment = get_default_environment()
@@ -503,7 +507,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         task.add_done_callback(finished)
         return await asyncio.shield(task)
 
-    async def _run(self, argv, *, cwd=None, timeout=120, env=None):
+    async def _run(self, argv, *, cwd=None, timeout=120, env=None, return_bytes=False):
         process = await asyncio.create_subprocess_exec(*argv, cwd=cwd, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         try:
             out, err = await asyncio.wait_for(process.communicate(), timeout)
@@ -517,7 +521,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
             raise ValueError(f"{Path(argv[0]).name} failed: {detail or 'The command did not complete.'}")
         if len(out) > 2_000_000:
             raise ValueError("The command returned too much metadata.")
-        return out.decode(errors="replace").strip()
+        return out if return_bytes else out.decode(errors="replace").strip()
 
     async def _checkout(self, repository, ref=None):
         repository = _repository(repository)
@@ -562,6 +566,81 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         finally:
             shutil.rmtree(checkout, ignore_errors=True)
 
+    async def setup(self, args):
+        """Selected documentation from retained Git objects, never the worktree.
+
+        This is guidance, not a readiness probe or permission to execute authored
+        instructions. Legacy installed rows need no reinstall or receipt rewrite.
+        """
+        identity = args['id']
+        row = next((copy.deepcopy(p) for p in self.state['installations'] if p['id'] == identity), None)
+        if row is None or not re.fullmatch(r'[a-f0-9]{16,64}', identity):
+            raise ValueError('This package is not installed.')
+        commit = row.get('commit')
+        if not isinstance(commit, str) or not re.fullmatch(r'[a-f0-9]{40}', commit):
+            raise ValueError('This installation has no exact source revision. Keep it and inspect its original source.')
+        package_path = _relative(row.get('path'))
+        extras = row.get('extras', [])
+        if not isinstance(extras, list) or any(not isinstance(extra, str) or not EXTRA_NAME.fullmatch(extra) for extra in extras):
+            raise ValueError('This installation has invalid package extras.')
+        if _installation_identity(_repository(row.get('repository')), commit, package_path, extras) != identity:
+            raise ValueError('This installation source differs from its retained identity.')
+        source = self.root / 'installs' / identity / 'source'
+        if source.is_symlink() or source.parent.is_symlink() or source.parent.parent.is_symlink():
+            raise ValueError('This installation source is no longer app-owned.')
+        root = _inside(source, package_path)
+        if row.get('sourceDir') != str(root):
+            raise ValueError('This installation source differs from its retained identity.')
+        # Git's blob lookup neither executes the package nor follows worktree
+        # symlinks. Disable machine configuration and avoid fetching any source.
+        prefix = '' if package_path == '.' else package_path.rstrip('/') + '/'
+        async def blob(path, maximum):
+            relative = _relative(path)
+            spec = commit + ':' + prefix + relative
+            async def read():
+                size = await self._run(['git', 'cat-file', '-s', spec], cwd=source,
+                                       env=_install_environment(), timeout=10)
+                if not size.isdecimal() or int(size) > maximum:
+                    raise ValueError('This setup document exceeds the selected read limit.')
+                return await self._run(['git', 'show', spec], cwd=source,
+                                       env=_install_environment(), timeout=10, return_bytes=True)
+            # Passive reads still hold their real subprocess lifetime through
+            # cancellation, so maintenance cannot mistake them for idle.
+            task = asyncio.create_task(read())
+            self.background_io.add(task)
+            def finished(done):
+                self.background_io.discard(done)
+                self.may_be_idle()
+                if not done.cancelled():done.exception()
+            task.add_done_callback(finished)
+            value = await asyncio.shield(task)
+            if len(value) > maximum:
+                raise ValueError('This setup document exceeds the selected read limit.')
+            return value.decode('utf-8')
+        descriptor = json.loads(await blob('smart-tool.json', 32_000))
+        if not isinstance(descriptor, dict) or descriptor != row.get('descriptor') or not isinstance(descriptor.get('manifest'), str):
+            raise ValueError('The source descriptor differs from the installed receipt. Keep the receipt and inspect its source.')
+        text = await blob(descriptor['manifest'], 256_000)
+        if _manifest(text) != row.get('manifest'):
+            raise ValueError('The source manifest differs from the installed receipt. Keep the receipt and inspect its source.')
+        offset, limit = args.get('offset', 0), args.get('limit', 12000)
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 16000:
+            raise ValueError('Setup document paging must be bounded.')
+        declared = descriptor.get('cli_argv', [])
+        smoke = descriptor.get('deterministic_smoke')
+        connections = [{'id':p['id'], 'name':p['name'], 'status':p.get('connectionState', p.get('status'))}
+                       for p in self.state['servers'] if p.get('installationId') == identity]
+        result = self._redact(_bounded({'id':identity, 'source':{k:row.get(k) for k in ('repository','ref','path','commit')},
+            'manifestPath':descriptor['manifest'], 'manifest':{'text':text[offset:offset+limit],
+                'offset':offset,'total':len(text),'nextOffset':offset+limit if offset+limit<len(text) else None,
+                'sha256':hashlib.sha256(text.encode()).hexdigest()},
+            'cli':{'declaredArgv':declared,'binDirectory':row.get('binDir'), 'deterministicSmoke':smoke,
+                   'verification':'not_run'}, 'requirements':row['manifest'].get('requires', []),
+            'connections':connections, 'readiness':'not_assessed',
+            'guidance':'Read the tool author’s instructions for CLI capabilities and optional MCP support. Installation alone does not prove prerequisites, model access, connected accounts or MCP readiness.'}, 128_000))
+        result['manifest']['redacted'] = result['manifest']['text'] != text[offset:offset+limit]
+        return result
+
     async def catalog(self):
         checkout, commit = await self._checkout(CATALOG_REPOSITORY)
         try:
@@ -601,7 +680,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
                 info = self._inspect_checkout(checkout, repository, commit, args)
                 if not info["pythonSupported"]:
                     raise InstallProblem("invalid_package", "This tool needs manual installation. Open its setup instructions for help.", "Automatic installation supports Python packages with pyproject.toml.")
-                identity = hashlib.sha256(json.dumps([repository, commit, info["path"], sorted(extras)]).encode()).hexdigest()[:24]
+                identity = _installation_identity(repository, commit, info["path"], extras)
                 install_dir = self.root / "installs" / identity
                 previous = next((row for row in self.state["installations"] if row["id"] == identity), None)
                 if previous and (install_dir / "venv" / "bin" / "python").exists():
@@ -629,7 +708,7 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
                     await self._run([uv, "pip", "install", "--no-config", "--python", str(python), package], timeout=600, env=environment, cwd=install_dir)
                 except (OSError, ValueError, TimeoutError) as exc:
                     raise InstallProblem("package_install_failed", "This tool couldn't be installed. Open the details for help or share them with its author.", str(exc)) from exc
-                row = {**info, "id": identity, "status": "installed", "extras": extras, "installedAt": time.time(), "binDir": str(python.parent), "python": str(python), "sourceDir": str(_inside(source, info["path"])), "nextStep": "Register the tool's documented MCP executable from this bin folder. Installation does not start a server or configure model credentials."}
+                row = {**info, "id": identity, "status": "installed", "extras": extras, "installedAt": time.time(), "binDir": str(python.parent), "python": str(python), "sourceDir": str(_inside(source, info["path"])), "nextStep": "Read this tool's setup instructions for its CLI capabilities and optional MCP support. Installation does not start a server or configure model credentials."}
                 if args.get('_update_from'): row['stagedFrom'] = args['_update_from']
                 await self._change(lambda state: state.update(installations=[item for item in state["installations"] if item["id"] != identity] + [row]))
                 return row

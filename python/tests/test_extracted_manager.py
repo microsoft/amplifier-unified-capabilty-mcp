@@ -175,7 +175,7 @@ async def test_python_install_is_explicit_records_commit_and_does_not_guess_mcp_
     assert commands[0][1] == "venv" and commands[1][1:3] == ["pip", "install"]
     assert commands[1][-1].endswith("[mcp]")
     assert not manager.state["servers"] and not manager.connections
-    assert "documented MCP executable" in result["nextStep"]
+    assert "CLI capabilities and optional MCP support" in result["nextStep"]
     assert manager.state["installations"][0]["binDir"].endswith("/venv/bin")
 
 async def test_waiting_batch_retains_source_and_extras_before_install_lane(manager,monkeypatch):

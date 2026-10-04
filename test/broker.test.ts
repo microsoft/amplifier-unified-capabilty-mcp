@@ -53,5 +53,12 @@ test('real Python inspect/install receipts keep package descriptors inert throug
   const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');assert.equal((await promisify(execFile)(installed.result.result.python,['-c','import boundary_fixture; print(boundary_fixture.VALUE)'])).stdout.trim(),'installed');
   const again=await action('install',source,'install-package');assert.equal(again.result.status,'completed');assert.equal(again.result.id,installed.result.id);assert.deepEqual(again.result.result,installed.result.result);assert.equal(await readFile(path.join(dir,'data/smart-tools/fixture-checkouts'),'utf8'),'2');
   const retained=await action('readResult',{operationId:'install-package'},'passive-read');assert.equal(retained.result.operation.status,'completed');assert.equal(retained.result.operation.result.id,installed.result.result.id);
+  const schemas=await owner.actionSchemas();assert.ok(schemas['smartTools.setup']);
+  const setup=await action('setup',{id:installed.result.result.id},'setup-package');
+  assert.equal(setup.artifact,undefined);assert.deepEqual(setup.updates,[]);
+  assert.equal(setup.result.source.commit,installed.result.result.commit);
+  assert.match(setup.result.manifest.text,/# Retained setup/);
+  assert.equal(setup.result.readiness,'not_assessed');assert.equal(setup.result.cli.verification,'not_run');
+  assert.equal(await readFile(path.join(dir,'data/smart-tools/fixture-checkouts'),'utf8'),'2');
  }finally{await owner.close();await rm(dir,{recursive:true,force:true});}
 });
