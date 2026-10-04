@@ -49,6 +49,10 @@ actual callback origin and preserves duplicate callback query keys without
 logging secrets. It checks session access and serializes administrative policy;
 a client ID by itself is not migration approval. Resource composition registers
 bounded descriptors idempotently, including recovery after acknowledgement loss.
+Only the broker's explicit artifact envelope, or a retained descriptor from a
+view-producing open/reconnect/context action, registers an external artifact.
+Smart Tool package descriptors and arbitrary tool-result descriptor fields are
+inert metadata; they never confer resource identity or registration authority.
 
 Clients use advertised schemas and immutable revisions, preserve private drafts,
 render MCP HTML in the README's opaque sandbox, and make unsupported/busy/unknown
