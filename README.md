@@ -36,6 +36,38 @@ The broker starts lazily. Listing metadata never starts MCP servers or OAuth. Th
 
 ## Actions and resources
 
+### Future-source pre-retirement admission abort
+
+The trusted host participant exposes `abortAdmission(contextWithProof)` and forwards
+it to the private `quiescence/abortAdmission` broker method. The broker advertises
+`admissionAbort: {version: 1}` in its private initialization reply. This is not a
+browser/agent Smart Tool action and performs no installation, reconnect, credential
+scan or user-command replay. The authenticated Host admission-abort verifier owns
+proof authority; an owner cannot manufacture a supervisor proof from missing state.
+
+New distribution-update acquisitions record their original attempt and definitive
+busy refusal in the existing `owner_quiescence_receipts` authority table. Held
+attempts survive process replacement as unknown. Only the exact distinct
+`distribution-admission-abort` proof can settle that attempt: generic release proof
+cannot authorize abort, and abort proof cannot authorize generic release. Owner,
+command, fence, instance and data-scope identity remain exact. Legacy held or unknown
+rows without original attempt evidence stay unknown and require their original
+recovery path. Missing held rows alone never establish `not-acquired`.
+
+Settlement stores the original owner receipt and clears that exact held row in one
+transaction. Lost replies and exact retries return the same retained receipt across
+restart without a second settlement or effect. Changed proof, unrelated current
+fence, issued/background work and pending Node acquisition/settlement refuse.
+Retirement coverage gaps alone can be unwound after a definitive refusal: abort
+does not retire connected peers or claim successful update admission. MCP and Smart
+Tools share this existing broker gate; no new gate database, schema table or shared
+Operations dependency is introduced.
+
+Exact executable fields live in [the exported types/validators](src/admission-abort.ts)
+and [the existing durable gate](python/amplifier_unified_mcp/quiescence.py). Package
+and fixture evidence is separate from current preview, deployed-worker or real
+Smart Tool/account acceptance.
+
 Existing `smartTools.*` configure/connect/disconnect/reconnect/remove, catalog/inspect/install/installBatch/uninstall, discover/schemas/call, resources/readResource, result/readResult, OAuth/account, open/viewStatus/reconnectView/appCall/context actions are advertised. Read-only `smartTools.list {collection,offset?,limit?}` pages servers, catalog, installations, or scoped operations and returns `{collection,items,total,nextOffset,revision}` without creating work. Initial records expose `pages[collection]` so clients do not silently mistake a first page for all records. Discovery separately pages 25 tool summaries; schemas load up to five exact tools/64 KB. Clients own pagination state.
 
 `smartTools.setup {id,offset?,limit?}` reads selected setup documentation from the
