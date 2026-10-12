@@ -518,6 +518,9 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         return await asyncio.shield(task)
 
     async def _run(self, argv, *, cwd=None, timeout=120, env=None, return_bytes=False):
+        from .repository_access import repository_environment, anonymous_retry_environment
+        env = repository_environment(env)
+        started = asyncio.get_running_loop().time()
         process = await asyncio.create_subprocess_exec(*argv, cwd=cwd, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         try:
             out, err = await asyncio.wait_for(process.communicate(), timeout)
@@ -527,6 +530,10 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
             await process.communicate()
             raise
         if process.returncode:
+            retry = anonymous_retry_environment(argv, env, out, err)
+            remaining = timeout - (asyncio.get_running_loop().time() - started)
+            if retry is not None and remaining > 0:
+                return await self._run(argv, cwd=cwd, timeout=remaining, env=retry, return_bytes=return_bytes)
             detail = self._redact(err.decode(errors="replace"))[-1500:]
             raise ValueError(f"{Path(argv[0]).name} failed: {detail or 'The command did not complete.'}")
         if len(out) > 2_000_000:

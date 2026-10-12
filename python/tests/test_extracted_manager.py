@@ -227,3 +227,25 @@ def _write_tool(folder):
     (folder / "smart-tool.json").write_text(json.dumps({"manifest": "SMART_TOOL.md", "cli_argv": [".venv/bin/strange"]}))
     (folder / "SMART_TOOL.md").write_text("---\nsmart_tool_format: 1\nname: strange\nversion: '1.0'\ndescription: A domain tool\n---\nRead-only instructions.")
     (folder / "pyproject.toml").write_text("[project]\nname='strange'\nversion='1.0'\n")
+
+
+async def test_public_auth_retry_keeps_private_access_and_never_retries_writes(monkeypatch):
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    import asyncio
+    from amplifier_unified_mcp.smart_tools import SmartToolsManager
+    monkeypatch.delenv('AMPLIFIER_GITHUB_ACCESS',raising=False)
+    manager=SimpleNamespace(_redact=lambda value:value)
+    manager._run=lambda argv,**kwargs:SmartToolsManager._run(manager,argv,**kwargs)
+    failed,passed=AsyncMock(),AsyncMock()
+    failed.returncode=128;failed.communicate.return_value=(b'',b'https://github.com/example/public: Authentication failed')
+    passed.returncode=0;passed.communicate.return_value=(b'commit',b'')
+    create=AsyncMock(side_effect=[passed,failed,passed,failed]);monkeypatch.setattr(asyncio,'create_subprocess_exec',create)
+    env={'GH_TOKEN':'fixture'}
+    assert await manager._run(['git','fetch','https://github.com/example/private'],env=env)=='commit'
+    assert create.await_count==1
+    assert await manager._run(['git','fetch','https://github.com/example/public'],env=env)=='commit'
+    assert create.await_count==3 and create.call_args.kwargs['env']['AMPLIFIER_GITHUB_ACCESS']=='anonymous'
+    assert create.call_args_list[1].args==create.call_args_list[2].args
+    with pytest.raises(ValueError):await manager._run(['git','push','https://github.com/example/public'],env=env)
+    assert create.await_count==4 and env=={'GH_TOKEN':'fixture'}
