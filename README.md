@@ -427,6 +427,15 @@ full installed/public-host evidence; see correctiveQualification in QUALIFICATIO
 
 ## Catalog snapshot provenance
 
+The trusted broker launch environment may set `AMPLIFIER_GITHUB_ACCESS=anonymous`
+for public repository downloads. Catalog discovery, inspection, installation and
+nested Git children started by uv then ignore personal Git configuration,
+GitHub account helpers, injected headers, cookies and askpass. Proxy and CA
+settings remain available. This does not edit personal configuration, grant
+private-repository access, or change configured MCP server credentials. Remove
+the setting to retain the existing GitHub helper behavior for private sources.
+This is launcher policy, never a catalog field or client/agent action argument.
+
 Catalog refresh reads the authoritative catalog's `main` branch. A listed entry
 requires credential-free source pointers and snapshot provenance that agrees
 exactly on repository, default `main` ref, and default `.` package path. Exact

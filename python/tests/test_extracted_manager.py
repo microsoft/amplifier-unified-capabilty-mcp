@@ -147,6 +147,36 @@ def test_discovery_and_install_do_not_inherit_global_hooks_or_model_secrets(monk
     assert environment["GIT_CONFIG_SYSTEM"] == os.devnull
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
 
+def test_anonymous_installer_does_not_consult_gh_and_nested_git_ignores_personal_config(tmp_path, monkeypatch):
+    import subprocess
+    config = tmp_path / 'personal-git'
+    config.write_text('[url "ssh://private.invalid/"]\n\tinsteadOf = https://github.com/\n[credential]\n\thelper = blocked-account\n')
+    monkeypatch.setenv('AMPLIFIER_GITHUB_ACCESS', 'anonymous')
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', str(config))
+    monkeypatch.setenv('GIT_CONFIG_COUNT', '1')
+    monkeypatch.setenv('GIT_CONFIG_KEY_0', 'http.extraHeader')
+    monkeypatch.setenv('GIT_CONFIG_VALUE_0', 'Authorization: fixture')
+    monkeypatch.setenv('GH_TOKEN', 'fixture-token')
+    monkeypatch.setenv('GIT_ASKPASS', '/must-not-run')
+    monkeypatch.setenv('OPENAI_API_KEY', 'unrelated-secret')
+    monkeypatch.setenv('HTTPS_PROXY', 'http://proxy.invalid:8080')
+    monkeypatch.setenv('SSL_CERT_FILE', '/fixture-ca')
+    monkeypatch.setattr('amplifier_unified_mcp.smart_tools.shutil.which', lambda _: pytest.fail('anonymous policy consulted gh'))
+    environment = _install_environment()
+    assert all(key not in environment for key in ('GH_TOKEN', 'GIT_ASKPASS', 'OPENAI_API_KEY'))
+    assert environment['HTTPS_PROXY'] == 'http://proxy.invalid:8080' and environment['SSL_CERT_FILE'] == '/fixture-ca'
+    assert environment['AMPLIFIER_GITHUB_ACCESS'] == 'anonymous'
+    code = 'import subprocess; print(subprocess.check_output(["git","ls-remote","--get-url","https://github.com/example/public.git"],text=True))'
+    assert subprocess.check_output([sys.executable, '-c', code], cwd=tmp_path, env=environment, text=True).strip() == 'https://github.com/example/public.git'
+    settings = subprocess.check_output(['git', 'config', '--list'], cwd=tmp_path, env=environment, text=True)
+    assert 'Authorization' not in settings and 'blocked-account' not in settings
+    assert 'blocked-account' in config.read_text()
+
+def test_normal_installer_retains_private_repository_authentication(monkeypatch):
+    monkeypatch.delenv('AMPLIFIER_GITHUB_ACCESS', raising=False)
+    monkeypatch.setattr('amplifier_unified_mcp.smart_tools.shutil.which', lambda _: '/fixture/gh')
+    assert _install_environment()['GIT_CONFIG_VALUE_0'] == '!gh auth git-credential'
+
 async def test_inspection_does_not_install_or_run_descriptor(manager, tmp_path, monkeypatch):
     checkout = tmp_path / "checkout"
     _write_tool(checkout)
