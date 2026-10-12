@@ -147,6 +147,36 @@ def test_discovery_and_install_do_not_inherit_global_hooks_or_model_secrets(monk
     assert environment["GIT_CONFIG_SYSTEM"] == os.devnull
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
 
+def test_anonymous_installer_does_not_consult_gh_and_nested_git_ignores_personal_config(tmp_path, monkeypatch):
+    import subprocess
+    config = tmp_path / 'personal-git'
+    config.write_text('[url "ssh://private.invalid/"]\n\tinsteadOf = https://github.com/\n[credential]\n\thelper = blocked-account\n')
+    monkeypatch.setenv('AMPLIFIER_GITHUB_ACCESS', 'anonymous')
+    monkeypatch.setenv('GIT_CONFIG_GLOBAL', str(config))
+    monkeypatch.setenv('GIT_CONFIG_COUNT', '1')
+    monkeypatch.setenv('GIT_CONFIG_KEY_0', 'http.extraHeader')
+    monkeypatch.setenv('GIT_CONFIG_VALUE_0', 'Authorization: fixture')
+    monkeypatch.setenv('GH_TOKEN', 'fixture-token')
+    monkeypatch.setenv('GIT_ASKPASS', '/must-not-run')
+    monkeypatch.setenv('OPENAI_API_KEY', 'unrelated-secret')
+    monkeypatch.setenv('HTTPS_PROXY', 'http://proxy.invalid:8080')
+    monkeypatch.setenv('SSL_CERT_FILE', '/fixture-ca')
+    monkeypatch.setattr('amplifier_unified_mcp.smart_tools.shutil.which', lambda _: pytest.fail('anonymous policy consulted gh'))
+    environment = _install_environment()
+    assert all(key not in environment for key in ('GH_TOKEN', 'GIT_ASKPASS', 'OPENAI_API_KEY'))
+    assert environment['HTTPS_PROXY'] == 'http://proxy.invalid:8080' and environment['SSL_CERT_FILE'] == '/fixture-ca'
+    assert environment['AMPLIFIER_GITHUB_ACCESS'] == 'anonymous'
+    code = 'import subprocess; print(subprocess.check_output(["git","ls-remote","--get-url","https://github.com/example/public.git"],text=True))'
+    assert subprocess.check_output([sys.executable, '-c', code], cwd=tmp_path, env=environment, text=True).strip() == 'https://github.com/example/public.git'
+    settings = subprocess.check_output(['git', 'config', '--list'], cwd=tmp_path, env=environment, text=True)
+    assert 'Authorization' not in settings and 'blocked-account' not in settings
+    assert 'blocked-account' in config.read_text()
+
+def test_normal_installer_retains_private_repository_authentication(monkeypatch):
+    monkeypatch.delenv('AMPLIFIER_GITHUB_ACCESS', raising=False)
+    monkeypatch.setattr('amplifier_unified_mcp.smart_tools.shutil.which', lambda _: '/fixture/gh')
+    assert _install_environment()['GIT_CONFIG_VALUE_0'] == '!gh auth git-credential'
+
 async def test_inspection_does_not_install_or_run_descriptor(manager, tmp_path, monkeypatch):
     checkout = tmp_path / "checkout"
     _write_tool(checkout)
@@ -197,3 +227,25 @@ def _write_tool(folder):
     (folder / "smart-tool.json").write_text(json.dumps({"manifest": "SMART_TOOL.md", "cli_argv": [".venv/bin/strange"]}))
     (folder / "SMART_TOOL.md").write_text("---\nsmart_tool_format: 1\nname: strange\nversion: '1.0'\ndescription: A domain tool\n---\nRead-only instructions.")
     (folder / "pyproject.toml").write_text("[project]\nname='strange'\nversion='1.0'\n")
+
+
+async def test_public_auth_retry_keeps_private_access_and_never_retries_writes(monkeypatch):
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    import asyncio
+    from amplifier_unified_mcp.smart_tools import SmartToolsManager
+    monkeypatch.delenv('AMPLIFIER_GITHUB_ACCESS',raising=False)
+    manager=SimpleNamespace(_redact=lambda value:value)
+    manager._run=lambda argv,**kwargs:SmartToolsManager._run(manager,argv,**kwargs)
+    failed,passed=AsyncMock(),AsyncMock()
+    failed.returncode=128;failed.communicate.return_value=(b'',b'https://github.com/example/public: Authentication failed')
+    passed.returncode=0;passed.communicate.return_value=(b'commit',b'')
+    create=AsyncMock(side_effect=[passed,failed,passed,failed]);monkeypatch.setattr(asyncio,'create_subprocess_exec',create)
+    env={'GH_TOKEN':'fixture'}
+    assert await manager._run(['git','fetch','https://github.com/example/private'],env=env)=='commit'
+    assert create.await_count==1
+    assert await manager._run(['git','fetch','https://github.com/example/public'],env=env)=='commit'
+    assert create.await_count==3 and create.call_args.kwargs['env']['AMPLIFIER_GITHUB_ACCESS']=='anonymous'
+    assert create.call_args_list[1].args==create.call_args_list[2].args
+    with pytest.raises(ValueError):await manager._run(['git','push','https://github.com/example/public'],env=env)
+    assert create.await_count==4 and env=={'GH_TOKEN':'fixture'}

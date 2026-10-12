@@ -87,7 +87,8 @@ def _installation_identity(repository, commit, path, extras):
 def _install_environment():
     from mcp.client.stdio import get_default_environment
     environment = get_default_environment()
-    for name in ("TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR"):
+    for name in ("TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR",
+                 "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy"):
         if name in os.environ:
             environment[name] = os.environ[name]
     environment["GIT_TERMINAL_PROMPT"] = "0"
@@ -95,7 +96,17 @@ def _install_environment():
     # elsewhere on the machine. Authentication is supplied explicitly below.
     environment["GIT_CONFIG_GLOBAL"] = os.devnull
     environment["GIT_CONFIG_SYSTEM"] = os.devnull
-    if shutil.which("gh"):
+    if os.environ.get("AMPLIFIER_GITHUB_ACCESS") == "anonymous":
+        # Applies to nested Git children started by uv too. Never pass account
+        # tokens/askpass or use personal Git configuration in this explicit mode.
+        environment["AMPLIFIER_GITHUB_ACCESS"] = "anonymous"
+        settings = [("credential.helper", ""), ("http.extraHeader", ""),
+                    ("http.cookieFile", ""), ("core.askPass", "")]
+        environment["GIT_CONFIG_COUNT"] = str(len(settings))
+        for index, (key, value) in enumerate(settings):
+            environment[f"GIT_CONFIG_KEY_{index}"] = key
+            environment[f"GIT_CONFIG_VALUE_{index}"] = value
+    elif shutil.which("gh"):
         environment.update({"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "credential.https://github.com.helper", "GIT_CONFIG_VALUE_0": "!gh auth git-credential"})
     return environment
 
@@ -507,6 +518,9 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
         return await asyncio.shield(task)
 
     async def _run(self, argv, *, cwd=None, timeout=120, env=None, return_bytes=False):
+        from .repository_access import repository_environment, anonymous_retry_environment
+        env = repository_environment(env)
+        started = asyncio.get_running_loop().time()
         process = await asyncio.create_subprocess_exec(*argv, cwd=cwd, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         try:
             out, err = await asyncio.wait_for(process.communicate(), timeout)
@@ -516,6 +530,10 @@ class SmartToolsManager(Lifecycle, ManagedUpdates):
             await process.communicate()
             raise
         if process.returncode:
+            retry = anonymous_retry_environment(argv, env, out, err)
+            remaining = timeout - (asyncio.get_running_loop().time() - started)
+            if retry is not None and remaining > 0:
+                return await self._run(argv, cwd=cwd, timeout=remaining, env=retry, return_bytes=return_bytes)
             detail = self._redact(err.decode(errors="replace"))[-1500:]
             raise ValueError(f"{Path(argv[0]).name} failed: {detail or 'The command did not complete.'}")
         if len(out) > 2_000_000:
