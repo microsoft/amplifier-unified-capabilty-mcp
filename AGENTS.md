@@ -20,3 +20,5 @@ Run checks appropriate to changed behavior; documentation-only changes require
 link/source/manifest validation, not unnecessary runtime reruns. Record source,
 installed package, fixtures, actual accounts/browser and adoption separately.
 Do not rewrite sealed evidence or claim a documentation successor reran it.
+
+This codebase is yours: what it's for and how it's built are your call, and you'll keep building on it.
