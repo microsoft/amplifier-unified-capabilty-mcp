@@ -1,0 +1,108 @@
+{
+  "citations": [
+    {
+      "git_blob": "ca8feb03f75ef457a0495f0413763a4edc055e14",
+      "path": "README.md",
+      "ref": "1ca9ccb815dd0cc205caca71a29230cba6dcfcca",
+      "sha256": "934702791e022386959cb09cc205c1bdd13ca5549671587fc2f30dafc9d8580f",
+      "url": "https://github.com/microsoft/amplifier-unified-capabilty-mcp/blob/1ca9ccb815dd0cc205caca71a29230cba6dcfcca/README.md"
+    },
+    {
+      "git_blob": "78554f94426670ae9a79d609e83c5421a121a32c",
+      "path": "contracts/mcp-owner.v1.md",
+      "ref": "1ca9ccb815dd0cc205caca71a29230cba6dcfcca",
+      "sha256": "e8ef99a7c3e0ef4cf0fe2cb9f556dc4d35ae067a4020f449e89d051cb1624ae4",
+      "url": "https://github.com/microsoft/amplifier-unified-capabilty-mcp/blob/1ca9ccb815dd0cc205caca71a29230cba6dcfcca/contracts/mcp-owner.v1.md"
+    }
+  ],
+  "consumer_cta": {
+    "basis": "Existing approved README route; target release assets/availability not freshly audited in this plan.",
+    "label": "Integrate MCP capabilities",
+    "url": "https://github.com/microsoft/amplifier-unified-capabilty-mcp#get-started"
+  },
+  "display_name": "Amplifier Unified MCP Capabilities",
+  "edges": [
+    {
+      "from": "self",
+      "relation": "contains",
+      "to": "adapter"
+    },
+    {
+      "from": "self",
+      "relation": "contains",
+      "to": "broker"
+    },
+    {
+      "from": "host",
+      "relation": "integrates",
+      "to": "self"
+    },
+    {
+      "from": "broker",
+      "relation": "uses",
+      "to": "servers"
+    },
+    {
+      "from": "self",
+      "relation": "uses",
+      "to": "resources"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "self",
+      "kind": "self",
+      "label": "Amplifier Unified MCP Capabilities",
+      "repository": "microsoft/amplifier-unified-capabilty-mcp"
+    },
+    {
+      "id": "adapter",
+      "kind": "internal",
+      "label": "Node capability adapter"
+    },
+    {
+      "id": "broker",
+      "kind": "internal",
+      "label": "Python MCP broker"
+    },
+    {
+      "id": "host",
+      "kind": "external",
+      "label": "Composing AHP host",
+      "repository": "microsoft/amplifier-unified-host"
+    },
+    {
+      "id": "servers",
+      "kind": "external",
+      "label": "Authorized MCP servers"
+    },
+    {
+      "id": "resources",
+      "kind": "external",
+      "label": "Resources capability",
+      "repository": "microsoft/amplifier-unified-capability-resources"
+    }
+  ],
+  "notes": [
+    "Canonical repository spelling is amplifier-unified-capabilty-mcp.",
+    "MCP transport connections are not automatically the Constellation Connection conversation-participation primitive.",
+    "Separate from Amplifier native tool-mcp module.",
+    "External services retain authorization; listing metadata does not launch servers or start OAuth."
+  ],
+  "purpose": "Connect a Unified host to MCP servers, tools, resources and interactive apps.",
+  "ref": "1ca9ccb815dd0cc205caca71a29230cba6dcfcca",
+  "repository": "microsoft/amplifier-unified-capabilty-mcp",
+  "roles": [],
+  "scope": "optional host capability",
+  "start_cta": {
+    "basis": "Existing approved README route; target release assets/availability not freshly audited in this plan.",
+    "label": "Integrate MCP capabilities",
+    "url": "https://github.com/microsoft/amplifier-unified-capabilty-mcp#get-started"
+  },
+  "summary": "An optional MCP broker and host adapter for external tools, resources and interactive apps.",
+  "supports_roles": [
+    "Tool",
+    "Experience"
+  ],
+  "visibility": "private"
+}
