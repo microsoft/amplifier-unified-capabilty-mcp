@@ -64,6 +64,27 @@ instead of relying on PATH. Do not reuse another broker's data directory.
 For development, run `npm run check`, `npm test`, and
 `uv run --directory python pytest`.
 
+
+<!-- ecosystem-map:start -->
+## Where this fits
+
+An optional MCP broker and host adapter for external tools, resources and interactive apps.
+
+Supports: Tool, Experience.
+
+![Ecosystem roles and component relationships](docs/ecosystem-map.svg)
+
+[Open the map](docs/ecosystem-map.svg) · [Product page source (private)](docs/product/index.html) · [Map guide](https://github.com/microsoft/amplifier-constellation/blob/main/docs/ecosystem-maps.md)
+
+<details>
+<summary>The five shared building blocks</summary>
+
+[![Experience, Conversation, Agent Instance, Connection and Tool](https://raw.githubusercontent.com/microsoft/amplifier-constellation/main/site/assets/art/building-blocks.png)](https://microsoft.github.io/amplifier-constellation/)
+
+</details>
+
+<!-- ecosystem-map:end -->
+
 ## Contributing
 
 Most contributions require you to agree to a
