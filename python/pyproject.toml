@@ -8,7 +8,7 @@ description = "Scoped MCP connection and application broker for Amplifier Unifie
 requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICENSE"]
-dependencies = ["mcp>=2.2,<3", "httpx>=0.28,<1", "aiohttp>=3.12,<4", "jsonschema>=4.23,<5", "pyyaml>=6,<7", "filelock>=3.20,<4", "packaging>=24,<27"]
+dependencies = ["mcp>=2.2,<3", "httpx>=0.28,<1", "aiohttp>=3.12,<4", "jsonschema>=4.23,<5", "pyyaml>=6,<7", "filelock>=3.20,<5", "packaging>=24,<27"]
 [project.scripts]
 amplifier-unified-mcp = "amplifier_unified_mcp.server:main"
 [tool.hatch.build.targets.wheel]
